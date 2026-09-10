@@ -1,0 +1,53 @@
+# DeepSeek Harness — docker compose
+#
+# Run (from repo root):
+#   docker compose --env-file docker/compose.env up -d --force-recreate
+#   docker compose logs -f dsh
+#
+# Volumes below use Compose interpolation. Defaults match a working local setup
+# (D:/Workspaces). Override via docker/compose.env + --env-file, or a project
+# .env used only for interpolation (do not mount the repo as /workspace).
+
+name: dsh
+
+services:
+  dsh:
+    image: nguyentrungthaoit/dsh:${DSH_IMAGE_TAG:-0.1.5-rc.1}
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        DSH_CLIENT_COMMIT_HASH: ${DSH_CLIENT_COMMIT_HASH:-0000000}
+    container_name: dsh
+    restart: unless-stopped
+    working_dir: /workspace
+    ports:
+      - "${DSH_HOST_PORT:-3080}:3080"
+    env_file:
+      - path: docker/compose.env
+        required: false
+    environment:
+      DSH_HOME: /data/dsh
+      # Must be a path inside the container. Host D:/Workspaces is mounted at /workspace.
+      HOME: /workspace
+      DSH_DOCKER_BIND_ALL: ${DSH_DOCKER_BIND_ALL:-1}
+      DSH_TRUSTED_HOST: ${DSH_TRUSTED_HOST:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-}
+    volumes:
+      - dsh-home:/data/dsh
+      # Host projects → /workspace. In the Web UI pick /workspace/<project> (Linux paths only).
+      - type: bind
+        source: ${DSH_WORKSPACE:-D:/Workspaces}
+        target: /workspace
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command:
+      - web
+      - --no-open
+      - --port
+      - "3080"
+
+volumes:
+  dsh-home:
+    name: dsh-home

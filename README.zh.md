@@ -44,6 +44,29 @@ pnpm dsh web
 
 `pnpm run build` 会准备仓库产物。`pnpm dsh web` 会直接使用这些已构建产物，不会重新构建。
 
+<a id="run-with-docker-compose"></a>
+
+### 使用 Docker Compose 运行
+
+主机只需 Docker。在仓库根目录：
+
+```sh
+cp docker/compose.env.example docker/compose.env
+# 编辑 docker/compose.env：DEEPSEEK_API_KEY、DSH_WORKSPACE=...
+
+docker compose --env-file docker/compose.env pull
+docker compose --env-file docker/compose.env up -d
+docker compose logs -f dsh
+```
+
+打开日志中带 `?token=` 的 URL（默认主机端口 `3080`）。`DSH_WORKSPACE` 会绑定挂载到 `/workspace`；在 Web UI 中选择该路径。更改挂载后需 recreate：
+
+```sh
+docker compose --env-file docker/compose.env up -d --force-recreate
+```
+
+停止：`docker compose --env-file docker/compose.env down`。镜像、Ollama/`host.docker.internal` 与 build/push 说明见 [docker/README.md](docker/README.md)。Compose 文件：[docker-compose.yml](docker-compose.yml)。
+
 ## 社区与支持
 
 - 通过 [GitHub Discussions](https://github.com/deepseek-ai/deepseek-harness/discussions) 提交反馈或 bug 报告。

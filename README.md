@@ -40,6 +40,27 @@ pnpm dsh web
 
 `pnpm run build` prepares the repository artifacts. `pnpm dsh web` uses those built artifacts without rebuilding.
 
+### Run with Docker Compose
+
+Requires only Docker on the host. From the repository root:
+
+```sh
+cp docker/compose.env.example docker/compose.env
+# Edit docker/compose.env: DEEPSEEK_API_KEY, DSH_WORKSPACE=...
+
+docker compose --env-file docker/compose.env pull
+docker compose --env-file docker/compose.env up -d
+docker compose logs -f dsh
+```
+
+Open the URL with `?token=` from the logs (default host port `3080`). `DSH_WORKSPACE` is bind-mounted at `/workspace`; pick that path in the Web UI. After changing mounts, recreate:
+
+```sh
+docker compose --env-file docker/compose.env up -d --force-recreate
+```
+
+Stop with `docker compose --env-file docker/compose.env down`. Image, Ollama/`host.docker.internal`, and build/push details: [docker/README.md](docker/README.md). Compose file: [docker-compose.yml](docker-compose.yml).
+
 ## Community and support
 
 - Submit feedback or bug reports through [GitHub Discussions](https://github.com/deepseek-ai/deepseek-harness/discussions).
