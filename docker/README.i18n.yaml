@@ -1,0 +1,37 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docker/README.md
+/docker-image-c-ng-ty:
+  en: 5692734b4a7a486d
+  zh: f9c8d936511cc885
+/docker-image-c-ng-ty/docker-compose-khuy-n-d-ng:
+  en: cd56f753c92b0577
+  zh: 8cfaa2625a0058ef
+/docker-image-c-ng-ty/docker-compose-khuy-n-d-ng/workspace-tr-n-m-y-c-ng-ty:
+  en: 6e171054e72f1a27
+  zh: 11276ca1fd72f48c
+/docker-image-c-ng-ty/d-ng-t-i-c-ng-ty-ch-docker:
+  en: 8c942d730b4bc304
+  zh: 2056330a18e20202
+/docker-image-c-ng-ty/d-ng-t-i-c-ng-ty-ch-docker/web-ui:
+  en: c9710c1b3adbf799
+  zh: 940b7e30ddad5755
+/docker-image-c-ng-ty/d-ng-t-i-c-ng-ty-ch-docker/headless-m-t-task:
+  en: 5cb7556c30a2be04
+  zh: da84c370b4a2e90e
+/docker-image-c-ng-ty/d-ng-t-i-c-ng-ty-ch-docker/secrets-v-data:
+  en: 4ba915b43063ed85
+  zh: 48f1d1ad690dfc19
+/docker-image-c-ng-ty/d-ng-t-i-c-ng-ty-ch-docker/ollama-model-tr-n-m-y-host:
+  en: 01467d0a4eb6003c
+  zh: 5f518f9f14d9a862
+/docker-image-c-ng-ty/d-ng-t-i-c-ng-ty-ch-docker/ch-n-workspace-directory-picker:
+  en: 4c0ac4805ca350a9
+  zh: cf59f12319a6dfe9
+/docker-image-c-ng-ty/build-push-m-y-c-quy-n-kh-ng-b-policy-ch-n:
+  en: 22ff4d6c3ec24746
+  zh: cd4e5afb8ec532ae
+/docker-image-c-ng-ty/l-u-v-n-h-nh:
+  en: 35dd817b5095f5ac
+  zh: 30f0814781147a1f

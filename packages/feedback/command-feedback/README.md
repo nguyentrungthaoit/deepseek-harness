@@ -48,7 +48,7 @@ In the Web client a bare `/feedback` — picked from the composer menu or typed 
 | `task-result` | The outcome of the task |
 | `instruction-following` | Understanding and following instructions |
 | `product-interaction` | Product features and interaction |
-| `service-stability` | Service stability |
+| `service-stability` | Stability and speed |
 | `resource-cost` | Resource usage and cost |
 | `security-privacy-permission` | Security, privacy, and permissions |
 | `other` | Anything else |
@@ -92,7 +92,6 @@ The producer trims the text, records blank text as absent, and writes one event 
 |---|---|
 | [`src/index.ts`](src/index.ts) | Plugin entry: `recordFeedback` producer, the `sessionFeedback` Remote service, `/feedback` command registration |
 | [`src/types.ts`](src/types.ts) | `feedback/record` event declaration, the category taxonomy, and the Remote request and result types |
-| — | No runtime invariant companion is published; each `feedback/record` is an independent append-only fact with no cross-event or mutable-data relationship. |
 
 </details>
 

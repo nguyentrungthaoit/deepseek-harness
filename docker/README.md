@@ -1,5 +1,7 @@
 # Docker image (công ty)
 
+English | [中文](README.zh.md)
+
 Image: `nguyentrungthaoit/dsh:<tag>`
 
 **Máy công ty chỉ cần Docker.** Không cài Node, pnpm, Python hay thư viện host — mọi runtime nằm trong image.

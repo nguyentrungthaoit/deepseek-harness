@@ -48,7 +48,7 @@ kind: "package-reference"
 | `task-result` | 任务结果 |
 | `instruction-following` | 指令理解与遵循 |
 | `product-interaction` | 产品功能与交互 |
-| `service-stability` | 服务稳定性 |
+| `service-stability` | 稳定性和速度 |
 | `resource-cost` | 资源使用与费用 |
 | `security-privacy-permission` | 安全隐私与权限 |
 | `other` | 其他 |
@@ -92,7 +92,6 @@ Web 客户端随附该命令。无头模式、ACP 自动化和 JSON-RPC 不提�
 |---|---|
 | [`src/index.ts`](src/index.ts) | 插件入口：`recordFeedback` 生产方、`sessionFeedback` Remote 服务、`/feedback` 命令注册 |
 | [`src/types.ts`](src/types.ts) | `feedback/record` 事件声明、分类表，以及 Remote 请求与结果类型 |
-| — | 未发布配套的运行时不变式；每个 `feedback/record` 都是独立的仅追加事实，不涉及跨事件关系或与可变数据的关系。 |
 
 </details>
 
