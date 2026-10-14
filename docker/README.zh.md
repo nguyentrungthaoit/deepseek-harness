@@ -66,7 +66,7 @@ docker compose --env-file docker/compose.env down
 ## 在公司使用（只需 Docker）
 
 ```sh
-docker pull nguyentrungthaoit/dsh:0.1.5-rc.1
+docker pull nguyentrungthaoit/dsh:0.2.1-alpha.3
 ```
 
 ### Web UI
@@ -77,13 +77,13 @@ docker run --rm -p 3080:3080 \
   -v dsh-home:/data/dsh \
   -v /path/to/project:/workspace \
   -w /workspace \
-  nguyentrungthaoit/dsh:0.1.5-rc.1
+  nguyentrungthaoit/dsh:0.2.1-alpha.3
 ```
 
 打开 `http://127.0.0.1:3080`。如果通过公司 hostname 访问：
 
 ```sh
-... nguyentrungthaoit/dsh:0.1.5-rc.1 web --no-open --port 3080 --trusted-host app.company.local:3080
+... nguyentrungthaoit/dsh:0.2.1-alpha.3 web --no-open --port 3080 --trusted-host app.company.local:3080
 ```
 
 ### Headless（单个任务）
@@ -93,7 +93,7 @@ docker run --rm \
   -e DEEPSEEK_API_KEY=sk-... \
   -v /path/to/project:/workspace \
   -w /workspace \
-  nguyentrungthaoit/dsh:0.1.5-rc.1 \
+  nguyentrungthaoit/dsh:0.2.1-alpha.3 \
   --profile headless "summarize this repository"
 ```
 
@@ -130,16 +130,20 @@ Docker 绑定 `0.0.0.0`，因此 Host 使用 **browse**（浏览容器内目录�
 ```sh
 docker build \
   --build-arg DSH_CLIENT_COMMIT_HASH="$(git rev-parse HEAD)" \
-  -t nguyentrungthaoit/dsh:0.1.5-rc.1 \
+  -t nguyentrungthaoit/dsh:0.2.1-alpha.3 \
   -t nguyentrungthaoit/dsh:latest \
   .
 
 docker login
-docker push nguyentrungthaoit/dsh:0.1.5-rc.1
+docker push nguyentrungthaoit/dsh:0.2.1-alpha.3
 docker push nguyentrungthaoit/dsh:latest
 ```
 
 `DSH_CLIENT_COMMIT_HASH` 是 7–40 位十六进制 commit（Docker context 不包含 `.git`）。
+
+## 镜像里的 shell
+
+容器带有 `bash`、`git`、`curl` 和 `tini`（PID 1，转发 SIGTERM 并回收子进程）。`PATH` 上的 `python3` 和 `pip` 是 venv `/opt/dsh-py`，已安装 `python-docx` 1.2.0、`openpyxl` 3.1.5 和 `pypdf` 6.19.0。Agent 在需要读取 `.docx`、`.xlsx` 或 PDF 文本时调用 `python3`。Web 不挂载 Desktop 的 Office skill，因此模型不会被提示使用这些库。装进 `/opt/dsh-py` 的 `pip install` 会在重建容器时消失；建在 `/workspace` 下的 venv 位于宿主机挂载上。
 
 ## 运维说明
 
