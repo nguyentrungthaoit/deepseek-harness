@@ -1,0 +1,25 @@
+# Bilingual-pair consistency record for local-pdf-field-list.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/cookbook/local-pdf-field-list.md
+/local-pdf-field-list:
+  en: 387c5ec86c622847
+  zh: 20e72e9a88f56faa
+/local-pdf-field-list/files:
+  en: 71165f4e67fef193
+  zh: 5fe373fda020b105
+/local-pdf-field-list/register-the-two-roots:
+  en: c313551d0454031a
+  zh: c05fbd4da7076764
+/local-pdf-field-list/what-the-model-receives:
+  en: 0e582a841561e45c
+  zh: 4ab4c358a250bd99
+/local-pdf-field-list/one-local-turn:
+  en: 1f8684ba09b7e46a
+  zh: 67d5fb6f15bc8dba
+/local-pdf-field-list/after-the-json:
+  en: 7fc143b164628087
+  zh: f1ac4eab0e960733
+/local-pdf-field-list/when-a-name-is-missing:
+  en: 7081d0bd0be33269
+  zh: 5de47e1cb06a195c

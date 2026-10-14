@@ -6,6 +6,7 @@
     ".github/review-ownership/README.md",
     "docs/AGENTS.md",
     "docs/cordis-api/inherited.md",
+    "docs/cookbook/local-pdf-field-list.vi.md",
     "docs/i18n/style-samples.md",
     "docs/i18n/terminology.md",
     "docs/i18n/translation-prompt.md"
