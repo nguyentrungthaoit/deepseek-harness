@@ -3,23 +3,23 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/cookbook/local-pdf-field-list.md
 /local-pdf-field-list:
-  en: 387c5ec86c622847
-  zh: 20e72e9a88f56faa
-/local-pdf-field-list/files:
-  en: 71165f4e67fef193
-  zh: 5fe373fda020b105
-/local-pdf-field-list/register-the-two-roots:
-  en: c313551d0454031a
-  zh: c05fbd4da7076764
-/local-pdf-field-list/what-the-model-receives:
-  en: 0e582a841561e45c
-  zh: 4ab4c358a250bd99
-/local-pdf-field-list/one-local-turn:
-  en: 1f8684ba09b7e46a
-  zh: 67d5fb6f15bc8dba
-/local-pdf-field-list/after-the-json:
-  en: 7fc143b164628087
-  zh: f1ac4eab0e960733
-/local-pdf-field-list/when-a-name-is-missing:
-  en: 7081d0bd0be33269
-  zh: 5de47e1cb06a195c
+  en: a6fad9c5d5e3f949
+  zh: d0c35b932a8eb502
+/local-pdf-field-list/1-load-the-rules-and-the-skill:
+  en: 71440624107a50d9
+  zh: 4975d510d6f87f29
+/local-pdf-field-list/2-send-the-pdf-text-and-the-business-rule:
+  en: f707c5d240500174
+  zh: d04a258504e22951
+/local-pdf-field-list/3-read-the-pages-the-skill-names:
+  en: f2905afa3a78a3d9
+  zh: bb66418c0cbb1c58
+/local-pdf-field-list/4-submit-one-json-object:
+  en: 91ffb6a019e27264
+  zh: f62440c17bf06d1a
+/local-pdf-field-list/5-compile-the-schema-outside-the-session:
+  en: 1f885c1b6469f1b8
+  zh: 37792d723869fd11
+/local-pdf-field-list/6-split-after-an-opaque-rejection:
+  en: 5f41ffde4a55dc0b
+  zh: 4ac3ca5e0ba0b154
