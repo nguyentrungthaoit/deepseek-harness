@@ -2,62 +2,42 @@
 
 [English](read-document.md) | [中文](read-document.zh.md) | Tiếng Việt
 
-## Tóm tắt
+## Kiểm tra tool đã có chưa
 
-Nhờ model đọc chữ và bảng từ file Word, PDF hoặc Excel trong workspace, hoặc từ file bạn đính kèm ở ô nhập. Model dùng `read_document`. Công cụ chữ `read` từ chối các file này vì chúng là file nhị phân.
+1. Mở Web. Vào **Settings → Agent presets**.
+2. Chọn preset đang dùng, thường là Standard. Bấm **View configuration**.
+3. Tìm chữ `tool-document`.
 
-## Mục lục
+Có chữ đó thì tool đã gắn. Mở hội thoại mới, đưa một file `.docx` vào workspace, nhắn "Đọc file này". Hội thoại phải có một hàng tên `read_document` và có đoạn chữ đọc được.
 
-- [Nhờ model đọc file](#ask-the-model)
-- [File nào dùng được](#which-files)
-- [Gắn tool](#mount-the-tool)
-- [Giới hạn và lỗi](#limits-and-failures)
-- [Đọc thêm](#further-exploration)
+Không thấy `tool-document` thì phiên chưa có tool. Làm mục dưới.
 
-<a id="ask-the-model"></a>
-## Nhờ model đọc file
-
-Đặt file vào workspace đang chọn, hoặc đính kèm ở ô nhập. File đính kèm được lưu nguyên và model nhận một đường dẫn chỉ đọc. Nói nội dung cần đọc bằng lời thường.
-
-Ví dụ: "Read report.docx and summarize the table in the first section."
-
-Model gọi `read_document` với đường dẫn đó. Khi xong, hội thoại hiện một hàng tool tên `read_document`. Kết quả là chữ có số dòng. Đoạn và bảng Word thành từng dòng, ô trong bảng cách nhau bằng tab. Mỗi sheet Excel có một dòng tiêu đề, rồi các dòng cách nhau bằng tab. Chữ PDF có mốc cho từng trang có chữ.
-
-File dài trả về một cửa sổ. Bảo model đọc tiếp, nó gọi `read_document` lần nữa với `offset` lớn hơn.
-
-<a id="which-files"></a>
-## File nào dùng được
-
-Các đuôi này dùng được:
-
-- `.docx` — đoạn văn và bảng.
-- `.pdf` — lớp chữ. Trang scan không có chữ trả về một thông báo và không có chữ của trang đó.
-- `.xlsx` — tên sheet và chữ trong ô. Ô công thức trả giá đã lưu trong file, hoặc chuỗi công thức khi file không lưu giá.
-
-Các đuôi này không dùng được: `.doc`, `.xls`, `.ppt`, `.pptx`, và file chữ thường. File chữ vẫn dùng `read`.
-
-<a id="mount-the-tool"></a>
 ## Gắn tool
 
-Các preset Web đang phát hành chưa có tool này. Thêm một hàng vào preset mà phiên đang dùng. `standard`, `ptc` và `cordis` là các preset đã có tool file. `minimal` thì không.
+Tag image nằm ở `DSH_IMAGE_TAG` trong `docker/compose.env`. Giá trị cần là `0.2.1-alpha.4`. Tag cũ hơn không chứa package, nên gắn plugin cũng không gọi được.
+
+Trong container, file preset là `/data/dsh/profiles/web/cordis.patch.yml`. Volume `dsh-home` giữ file này. Trong danh sách plugin của preset `standard`, `ptc` hoặc `cordis`, thêm hàng sau cạnh `tool-fs`:
 
 ```yaml
 - id: tool-document
   name: '@deepseek-ai/dsh-tool-document'
 ```
 
-Đặt hàng này cạnh `tool-fs`. Package đã có mọi giới hạn, nên `config` có thể bỏ. Profile Desktop và SDK không có hàng này.
+Giữ các hàng plugin khác của preset. Lưu file, mở hội thoại mới, rồi làm lại bước tìm `tool-document`.
 
-<a id="limits-and-failures"></a>
-## Giới hạn và lỗi
+Preset Minimal không có tool file. Desktop và SDK không có hàng này.
 
-File lớn hơn 32 MiB thì lỗi và không bị cắt cụt. Gói Word hoặc Excel có hơn 2000 mục ZIP, hoặc kích thước khai báo khi giải nén hơn 32 MiB, thì lỗi trước khi đọc nội dung. Một lần đọc PDF dừng sau 50 trang. Một lần gọi trả tối đa 2000 dòng và 50 KiB của các dòng đó. Excel dừng sau 32 sheet và 5000 dòng dữ liệu mỗi sheet. Lần gọi chạy quá 30 giây thì bị dừng.
+## Nhờ model đọc
 
-Không có sandbox thì lần gọi lỗi. Việc đọc không chạy tiếp trong process của máy chủ Web. File hỏng hoặc có mật khẩu làm lần gọi lỗi. PDF không có lớp chữ thì lần gọi thành công và báo model là không có chữ để đọc.
+Đặt file vào workspace, hoặc đính kèm ở ô nhập. Nói việc cần làm bằng lời thường, ví dụ "Đọc report.docx và tóm tắt bảng đầu".
 
-<a id="further-exploration"></a>
+Kết quả là chữ có số dòng. Bảng Word và ô Excel cách nhau bằng tab. Mỗi sheet Excel có một dòng tiêu đề. PDF có mốc từng trang còn chữ. File dài thì bảo model đọc tiếp.
+
+Đuôi dùng được: `.docx`, `.pdf` có lớp chữ, `.xlsx`. PDF scan không có chữ thì lần gọi vẫn xong và báo không có chữ. Đuôi `.doc`, `.xls`, `.ppt`, `.pptx` không dùng tool này. File chữ thường vẫn dùng `read`.
+
+Một lần gọi nhận file tối đa 32 MiB, PDF tối đa 50 trang, và dừng sau 30 giây. File hỏng hoặc có mật khẩu thì lần gọi lỗi.
+
 ## Đọc thêm
 
 - [Hợp đồng package](../../../packages/document/tool-document/README.md) — các field cấu hình và kết quả model nhận.
-- [Dùng Web UI](./index.md) — khởi động máy chủ và chọn workspace.
-- [Cấu hình custom skill](./custom-skills.vi.md) — gắn thư mục skill trên máy local và Docker.
+- [Cấu hình custom skill](./custom-skills.vi.md) — đặt file skill và thử bằng `/field-list`.

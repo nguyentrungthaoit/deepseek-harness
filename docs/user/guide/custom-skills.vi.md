@@ -1,56 +1,49 @@
 # Cấu hình custom skill
 
-## Tóm tắt
+## Làm theo 4 bước
 
-Custom skill là file hướng dẫn nằm trên đĩa. Bạn trỏ `customSkillDirs` của `@deepseek-ai/dsh-skill-filesystem` vào thư mục chứa chúng. Preset web `standard`, `ptc` và `cordis` đã có plugin này và tool `skill`. Preset `minimal` không có, nên không nạp skill.
+1. Trên máy Windows, vào project sẽ mở trên Web. Tạo thư mục `.agents/skills` ngay trong project. Ví dụ project là `D:/Workspaces/my-app` thì thư mục là `D:/Workspaces/my-app/.agents/skills`.
+2. Copy mọi file `.md` từ `workspace/local-extract/rules` và `workspace/local-extract/skills` vào thư mục vừa tạo. Mỗi file nằm thẳng trong `.agents/skills`, ví dụ `field-list.md`. Đừng để chúng trong thư mục con.
+3. Trên Web, chọn đúng project đó. Mở một hội thoại mới. Chế độ là Standard, PTC hoặc Creator.
+4. Trong ô nhập gõ `/field-list` rồi gửi.
 
-## Skill hợp lệ
+Xong khi câu trả lời nói về danh sách field. Chưa xong khi model hỏi skill này là gì, hoặc coi `/field-list` như một câu chat.
 
-Mỗi skill là một file `<tên>.md` ngay trong thư mục gốc, hoặc một thư mục `<tên>/SKILL.md`. File nằm sâu hơn không được nhận. File bắt đầu bằng frontmatter YAML. `name` và `description` là bắt buộc.
+`docker-compose.yml` giữ nguyên. Project đã vào container qua `DSH_WORKSPACE` trong `docker/compose.env`. Web hiện project đó dưới `/workspace`.
 
-```yaml
----
-name: plan-from-pdf
-description: Lập prompt và danh sách field từ PDF và rule nghiệp vụ.
----
-```
+## Nếu gõ `/` mà không thấy tên
 
-`name` là tên gọi trong hội thoại. Thiếu frontmatter hoặc `name` sai thì skill bị bỏ qua kèm cảnh báo. Model không thấy lý do nó vắng mặt.
+- Tên file là `field-list.md`, và dòng `name: field-list` nằm ở đầu file.
+- File không nằm trong `rules` hay `skills` bên trong `.agents/skills`.
+- Hội thoại mới mở sau khi copy, và thanh workspace đang chỉ đúng project.
 
-## Gắn thư mục
+Năm tên cần thấy: `field-list`, `default-envelope`, `vertex-schema-limits`, `plan-from-pdf`, `flatten-on-gemini-error`.
 
-Đường dẫn phải là đường dẫn tuyệt đối mà process `dsh` đọc được. Với bản Docker, đó là đường dẫn trong container, không phải ổ `D:` của Windows.
+`/plan-from-pdf` dùng khi đã có PDF và rule nghiệp vụ. `/flatten-on-gemini-error` chỉ gửi sau khi Gemini báo lỗi schema.
 
-```yaml
-- id: skill-filesystem
-  name: '@deepseek-ai/dsh-skill-filesystem'
-  config:
-    customSkillDirs:
-      - /opt/local-extract/rules
-      - /opt/local-extract/skills
-```
+## Dùng cho mọi project
 
-Các thư mục này đứng sau skill của project (`.dsh/skills`, `.agents/skills`) và trước skill của người dùng. Sửa file skill không cần khởi động lại server. Thêm hoặc xóa file cũng vậy, vì thư mục đang được theo dõi.
-
-Trang cài đặt Agent presets lưu đè hàng plugin theo `id` vào `$DSH_HOME/profiles/web/cordis.patch.yml`. Trên Docker, `$DSH_HOME` là `/data/dsh`.
-
-## Bản Docker công ty
-
-Image không chứa `workspace/local-extract`. Mount thư mục đó vào container, rồi dùng đường dẫn mount trong `customSkillDirs`.
+Copy các file `.md` vào volume mà mọi hội thoại đều đọc. Container tên `dsh` phải đang chạy. Ở thư mục repo trên Windows:
 
 ```sh
--v d:/Workspaces/AI/deepseek-harness/deepseek-harness/workspace/local-extract:/opt/local-extract:ro
+docker cp workspace/local-extract/rules/. dsh:/data/dsh/skills/
+docker cp workspace/local-extract/skills/. dsh:/data/dsh/skills/
 ```
 
-Đổi mount thì tạo lại container. Volume `dsh-home` giữ file profile, nên cấu hình `customSkillDirs` còn sau khi tạo lại.
+Mở hội thoại mới và gửi `/field-list`. `/data/dsh` là volume `dsh-home` trong `docker-compose.yml`.
 
-## Gọi skill
+## Đầu file skill
 
-Trong ô nhập, gõ `/` cộng `name` trong frontmatter, ví dụ `/plan-from-pdf`. Model cũng có thể tự nạp skill bằng tool `skill` khi skill có trong catalog.
+```yaml
+---
+name: field-list
+description: Hợp đồng danh sách field cho lần lập schema.
+---
+```
 
-Lần lập field đầu nạp `/field-list`, `/default-envelope` và `/vertex-schema-limits`. `/flatten-on-gemini-error` chỉ dùng sau khi một lần gọi Gemini thực tế trả lỗi schema.
+`name` là chữ đứng sau dấu `/`. Thiếu `name` hoặc `description` thì tên đó không hiện.
 
 ## Đọc thêm
 
-- [Đọc file Word, PDF và Excel](./read-document.vi.md) — tool `read_document` trên web. Image `0.2.1-alpha.4` có package này; preset web chưa gắn sẵn, thêm dòng plugin trong hướng dẫn đó.
+- [Đọc file Word, PDF và Excel](./read-document.vi.md) — kiểm tra `read_document` đã có trong phiên chưa.
 - [Hợp đồng skill filesystem](../../../packages/skill/skill-filesystem/README.md) — thứ tự thư mục và các field cấu hình.
