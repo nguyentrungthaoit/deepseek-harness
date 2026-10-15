@@ -1,6 +1,6 @@
 ---
 name: field-list
-description: Hợp đồng JSON prompt và fields phẳng cho lượt trích xuất. Nạp trước khi viết path, type, items hoặc description.
+description: Hợp đồng JSON prompt và fields phẳng cho lượt trích xuất. Nạp trước khi viết path, required hoặc description.
 ---
 
 # Danh sách field
@@ -11,31 +11,25 @@ Trả một JSON object. Không markdown, không hàng rào ```, không JSON Sch
 
 `prompt` là string. Nói loại tài liệu, việc cần làm, quy ước ngày và số, cách xử lý trang không có chữ. Không chép `fields` vào `prompt`. Không bảo model trả về JSON.
 
-`fields` là mảng. Mỗi phần tử có `path`, `type`, `required`, `description`. Field `array` thêm `items`. Field khác không có `items`.
+Ba field khung trong `default-envelope` có `path`, `type`, `required`, `description`. Không có `items`.
 
-## type
+Mọi field dưới `response` có `path`, `required`, `description`. Không có `type`. Không có `items`.
 
-`type` là một trong `string`, `integer`, `number`, `boolean`, `array`, `object`.
+## Độ sâu
 
-`items` của `array` là một trong `string`, `integer`, `number`, `boolean`, `object`.
+Đếm đoạn sau `response`. `data` và `response` không tính. `data.response.invoiceNumber` là 1 cấp. `data.response.a.b.c.d.e` là 5 cấp. Cấp thứ 6 bị cấm.
 
-`array` và `items` scalar không có field con. Path không chứa `[]`.
-
-`array` và `items: "object"` có ít nhất một field con. Path của field `array` không chứa `[]`. Path con là `path[].ten`.
-
-`object` không có `items` và có ít nhất một field con. Path không kết thúc bằng `[]`. Path con là `path.ten`. Object nằm trong một mảng thì path chứa đúng `[]` của mảng đó, ví dụ `lines[].buyer` và `lines[].buyer.name`.
-
-Mỗi path chứa tối đa một `[]`.
-
-Một giá trị liệt kê dùng `string`. Nhiều giá trị scalar dùng `array` với `items` đúng kiểu. Nhiều object dùng `array` với `items: "object"`. Một nhóm không lặp dùng `object`.
+Một đoạn có `[]` vẫn là một cấp. `data.response.lines[].taxes[].rate` là 3 cấp.
 
 ## path
 
-Ngăn bằng dấu chấm. Mỗi path xuất hiện một lần. Ký tự của mỗi đoạn là chữ, số và `_`.
+Ngăn bằng dấu chấm. Mỗi path xuất hiện một lần. Ký tự của mỗi đoạn là chữ, số và `_`, cộng `[]` khi đoạn đó là mảng.
 
-Prefix phải được khai báo. `buyer.name` đòi field `buyer` kiểu `object`. `lines[].amount` đòi field `lines` kiểu `array`, `items: "object"`.
+Mỗi đoạn có tối đa một `[]`. Một path được nhiều `[]`. Không có `[]` là một nhóm. Có `[]` là một mảng. Rule này không chọn kiểu dữ liệu của năm cấp.
 
-Không dùng một path vừa là scalar vừa là object hoặc array.
+Prefix phải được khai báo. `data.response.buyer.name` đòi field `data.response.buyer`. `data.response.lines[].taxes[].rate` đòi field `data.response.lines[]` và `data.response.lines[].taxes[]`.
+
+Không khai báo một path vừa có `[]` vừa không có `[]`.
 
 ## required
 

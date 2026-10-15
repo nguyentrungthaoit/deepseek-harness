@@ -163,6 +163,14 @@ const homeAndGuide = pairedPages([
     order: 1,
   },
   {
+    source: 'docs/user/guide/read-document.md',
+    route: 'guide/read-document.md',
+    label: { root: '读取 Word、PDF 和 Excel', en: 'Read Word, PDF, and Excel' },
+    sidebar: { root: 'zh-guide', en: 'en-guide' },
+    section: { root: '文件', en: 'Files' },
+    order: 1,
+  },
+  {
     source: 'docs/user/guide/schedule.md',
     route: 'guide/schedule.md',
     label: { root: '会话内提醒', en: 'Session reminders' },

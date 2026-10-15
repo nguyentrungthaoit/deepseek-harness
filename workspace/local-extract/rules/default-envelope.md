@@ -41,7 +41,6 @@ Ví dụ đủ khung:
     },
     {
       "path": "data.response.invoiceNumber",
-      "type": "string",
       "required": true,
       "description": "Số hóa đơn ở góc phải trang đầu."
     }

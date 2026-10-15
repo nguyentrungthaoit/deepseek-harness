@@ -9,6 +9,8 @@
     "docs/cookbook/local-pdf-field-list.vi.md",
     "docs/i18n/style-samples.md",
     "docs/i18n/terminology.md",
-    "docs/i18n/translation-prompt.md"
+    "docs/i18n/translation-prompt.md",
+    "docs/user/guide/custom-skills.vi.md",
+    "docs/user/guide/read-document.vi.md"
   ]
 }

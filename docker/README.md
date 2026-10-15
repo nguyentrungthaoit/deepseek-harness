@@ -66,7 +66,7 @@ File: [`docker-compose.yml`](../docker-compose.yml), mẫu env: [`compose.env.ex
 ## Dùng tại công ty (chỉ Docker)
 
 ```sh
-docker pull nguyentrungthaoit/dsh:0.2.1-alpha.3
+docker pull nguyentrungthaoit/dsh:0.2.1-alpha.4
 ```
 
 ### Web UI
@@ -77,13 +77,13 @@ docker run --rm -p 3080:3080 \
   -v dsh-home:/data/dsh \
   -v /path/to/project:/workspace \
   -w /workspace \
-  nguyentrungthaoit/dsh:0.2.1-alpha.3
+  nguyentrungthaoit/dsh:0.2.1-alpha.4
 ```
 
 Mở `http://127.0.0.1:3080`. Nếu truy cập qua hostname công ty:
 
 ```sh
-... nguyentrungthaoit/dsh:0.2.1-alpha.3 web --no-open --port 3080 --trusted-host app.company.local:3080
+... nguyentrungthaoit/dsh:0.2.1-alpha.4 web --no-open --port 3080 --trusted-host app.company.local:3080
 ```
 
 ### Headless (một task)
@@ -93,7 +93,7 @@ docker run --rm \
   -e DEEPSEEK_API_KEY=sk-... \
   -v /path/to/project:/workspace \
   -w /workspace \
-  nguyentrungthaoit/dsh:0.2.1-alpha.3 \
+  nguyentrungthaoit/dsh:0.2.1-alpha.4 \
   --profile headless "summarize this repository"
 ```
 
@@ -130,12 +130,12 @@ Làm một lần ngoài máy công ty (hoặc CI), rồi đồng nghiệp chỉ 
 ```sh
 docker build \
   --build-arg DSH_CLIENT_COMMIT_HASH="$(git rev-parse HEAD)" \
-  -t nguyentrungthaoit/dsh:0.2.1-alpha.3 \
+  -t nguyentrungthaoit/dsh:0.2.1-alpha.4 \
   -t nguyentrungthaoit/dsh:latest \
   .
 
 docker login
-docker push nguyentrungthaoit/dsh:0.2.1-alpha.3
+docker push nguyentrungthaoit/dsh:0.2.1-alpha.4
 docker push nguyentrungthaoit/dsh:latest
 ```
 
@@ -144,6 +144,10 @@ docker push nguyentrungthaoit/dsh:latest
 ## Shell trong image
 
 Container có `bash`, `git`, `curl` và `tini` (PID 1, chuyển SIGTERM và thu process con). `python3` và `pip` trên `PATH` là venv `/opt/dsh-py`, đã cài `python-docx` 1.2.0, `openpyxl` 3.1.5 và `pypdf` 6.19.0. Agent gọi `python3` khi cần đọc `.docx`, `.xlsx` hoặc chữ trong PDF. Web không gắn skill Office của Desktop, nên model không được nhắc dùng các thư viện này. `pip install` vào `/opt/dsh-py` mất khi tạo lại container; venv tạo dưới `/workspace` nằm trên mount của máy host.
+
+## Custom skill
+
+Cách gắn thư mục skill nằm ở [cấu hình custom skill](../docs/user/guide/custom-skills.vi.md).
 
 ## Lưu ý vận hành
 

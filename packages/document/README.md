@@ -1,15 +1,15 @@
 ---
-description: "Package map for Host Office conversion and reusable PDF results."
+description: "Package map for Host Office conversion and document text extraction."
 kind: "package-group"
 ---
 
-# document/ — Office conversion
+# document/ — Office documents
 
 English | [中文](README.zh.md)
 
 ## Summary
 
-Convert authorized Office files to reusable PDFs on the Host. The shared service converts through LibreOffice kit. Targets with a declared native engine use it; other targets use Node WASM.
+Convert authorized Office files to reusable PDFs on the Host, and extract text from docx, pdf, and xlsx with `read_document`. The shared conversion service uses LibreOffice kit. Targets with a declared native engine use it; other targets use Node WASM.
 
 ## Table of Contents
 
@@ -27,6 +27,7 @@ Each package owns its configuration and lifetime rules; the subsystem reference 
 | Package | Role | ctx key |
 |---|---|---|
 | [office-to-pdf](office-to-pdf/README.md) | Authorized Office bytes to complete PDFs with bounded queues and caching | `ctx.officeToPdf` |
+| [tool-document](tool-document/README.md) | `read_document` text and tables from docx, pdf, and xlsx | registers on `ctx.tools` |
 
 -----
 

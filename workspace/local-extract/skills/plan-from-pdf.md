@@ -5,7 +5,7 @@ description: Lập prompt và danh sách field phẳng từ một PDF khoảng 1
 
 # Lập kế hoạch trích xuất
 
-Nạp `field-list`, `default-envelope` và `vertex-schema-limits` trước khi viết field. Ba file đó là hợp đồng. Skill này chỉ nói thứ tự làm.
+Nạp `field-list`, `default-envelope` và `vertex-schema-limits` trước khi viết field. Ba file đó là hợp đồng của lần nộp đầu. Skill này chỉ nói thứ tự làm. `flatten-on-gemini-error` chỉ nạp sau khi một lần gọi Gemini thực tế trả lỗi schema.
 
 ## Đọc tài liệu
 
@@ -23,10 +23,14 @@ Rule đánh field là bắt buộc thì khai báo `required: true` dù các tran
 
 Rule đánh field là tùy chọn mà các trang đã đọc không chứa giá trị thì bỏ field đó.
 
-Một bảng là `type: "array"`, `items: "object"`, mỗi cột là một field con. Một nhóm không lặp là `type: "object"`.
+Một bảng là path có `[]`, mỗi cột là một field con. Một nhóm không lặp là path không có `[]`. Lồng tối đa 5 cấp sau `response`. Không ghi `type` cho các cấp đó.
 
 ## Nộp
 
 Đối chiếu bản nháp với cả ba rule. Sửa mọi chỗ lệch trước khi nộp.
 
 Nộp một lần, đúng một JSON object của `field-list`. Không thêm lời dẫn.
+
+## Khi Gemini lỗi
+
+Khi một lần gọi Gemini thực tế trả lỗi schema, nạp `flatten-on-gemini-error`. Mỗi lần chỉ đổi một cấp. Hết nhóm thì lùi mảng sâu nhất một cấp, lần lỗi sau lùi thêm một cấp. Tên node được đưa lên có prefix tên node cha theo camelCase. Giữ `[]`. Nộp lại `fields`.

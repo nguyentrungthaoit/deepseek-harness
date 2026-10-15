@@ -1,15 +1,15 @@
 ---
-description: "Host Office 转换和可复用 PDF 结果的包索引。"
+description: "宿主 Office 转换与文档文本提取的包索引。"
 kind: "package-group"
 ---
 
-# document/ — Office 转换
+# document/ — Office 文档
 
 [English](README.md) | 中文
 
 ## 摘要
 
-在宿主上将已授权的 Office 文件转换为可复用的 PDF。共享服务使用 LibreOffice kit 执行转换。声明了原生引擎的目标使用原生引擎，其余目标使用 Node WASM。
+在宿主上将已授权的 Office 文件转换为可复用的 PDF，并用 `read_document` 从 docx、pdf 和 xlsx 提取文本。共享转换服务使用 LibreOffice kit。声明了原生引擎的目标使用原生引擎，其余目标使用 Node WASM。
 
 ## 目录
 
@@ -27,6 +27,7 @@ kind: "package-group"
 | 包 | 职责 | ctx 键 |
 |---|---|---|
 | [office-to-pdf](office-to-pdf/README.zh.md) | 将已授权 Office 字节转换为完整 PDF，并提供有界队列和缓存 | `ctx.officeToPdf` |
+| [tool-document](tool-document/README.zh.md) | 用 `read_document` 读取 docx、pdf 和 xlsx 的文本与表格 | 注册在 `ctx.tools` |
 
 -----
 

@@ -1,0 +1,28 @@
+# Bilingual-pair consistency record for read-document.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/user/guide/read-document.md
+/read-word-pdf-and-excel-files:
+  en: ba2f25014dcfa0a1
+  zh: 47e030feae973cd7
+/read-word-pdf-and-excel-files/summary:
+  en: f5b056c436bad473
+  zh: 5b3a99d9b11ba5e1
+/read-word-pdf-and-excel-files/table-of-contents:
+  en: 4e89df356460f1dd
+  zh: 66770aa9adcd0ace
+/read-word-pdf-and-excel-files/ask-the-model-to-read-a-file:
+  en: a06ebf98a4b80451
+  zh: a621e3b2d934f93c
+/read-word-pdf-and-excel-files/which-files-work:
+  en: 371f4fc83fbee671
+  zh: b520f7b37988e9be
+/read-word-pdf-and-excel-files/mount-the-tool:
+  en: d0bc96707668cca0
+  zh: c26412ce662bd12d
+/read-word-pdf-and-excel-files/limits-and-failures:
+  en: 947baaaebd6a294a
+  zh: 9fb8548085ed1df6
+/read-word-pdf-and-excel-files/further-exploration:
+  en: 2d962df03dea526a
+  zh: e072a10f8e5153c3
