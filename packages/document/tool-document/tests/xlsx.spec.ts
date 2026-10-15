@@ -104,11 +104,11 @@ it('truncates one cell to the remaining characters and counts characters rather 
 })
 
 it('reads a byte view and ignores drawings', async () => {
-  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')
+  const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
   const bytes = await xlsx((workbook) => {
     const sheet = workbook.addWorksheet('Pic')
     sheet.getCell('A1').value = 'caption'
-    const image = workbook.addImage({ buffer: png, extension: 'png' })
+    const image = workbook.addImage({ base64: png, extension: 'png' })
     sheet.addImage(image, { tl: { col: 1, row: 1 }, ext: { width: 8, height: 8 } })
   })
   const padded = new Uint8Array(bytes.length + 4)
