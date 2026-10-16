@@ -143,6 +143,7 @@ The Host `ctx.workspaceFiles` service and generated `workspaceFiles` Remote name
 - **`files`** — `builtin`, opened as `openTab('files')`. The workspace directory tree, listed lazily through `list` and watched by expanded directory, opening a file with `tab.actions.openResource(fileAddressFor(sessionId, root, path))` into its own pane ([README](../../packages/client/ui-sidebar-files/README.md)).
 - **`browser`** — multi-instance `builtin`, opened as `openTab('browser', { params: { url? } })`. Chat's [link preference](../../packages/client/ui-chat/README.md) controls whether Assistant Markdown opens HTTP(S) links here. It accepts public and loopback HTTP(S) targets under the default sandbox, rejects local files in favor of Document Preview, and uses application-known iframe history ([README](../../packages/client/ui-sidebar-browser/README.md)).
 - **`subagentchat`** — `builtin`, `dsh-resource://subagentchat/session/<child>?parent=<parent>&mode=<mode>`. An explicitly addressed subagent Conversation retained by the resource provider and rendered through the shared Conversation Factory ([README](../../packages/client/ui-subagent/README.md)).
+- **`skills`** — `builtin`, opened from its guide entry as `openTab('skills')`. Lists the Session project's rules and skills. Writable rows can be edited, deleted, and flagged for subagent tasks; use in chat appends `/name ` to the composer ([README](../../packages/client/ui-skill-manager/README.md)).
 
 <a id="not-built"></a>
 ## Not built

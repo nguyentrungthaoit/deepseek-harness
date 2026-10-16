@@ -42,6 +42,9 @@
       "path": "../ui-sidebar-right"
     },
     {
+      "path": "../../typert/protocol"
+    },
+    {
       "path": "../../util/workspace-path"
     }
   ]

@@ -66,7 +66,7 @@ docker compose --env-file docker/compose.env down
 ## 在公司使用（只需 Docker）
 
 ```sh
-docker pull nguyentrungthaoit/dsh:0.2.1-alpha.4
+docker pull nguyentrungthaoit/dsh:0.2.1-alpha.5
 ```
 
 ### Web UI
@@ -77,13 +77,13 @@ docker run --rm -p 3080:3080 \
   -v dsh-home:/data/dsh \
   -v /path/to/project:/workspace \
   -w /workspace \
-  nguyentrungthaoit/dsh:0.2.1-alpha.4
+  nguyentrungthaoit/dsh:0.2.1-alpha.5
 ```
 
 打开 `http://127.0.0.1:3080`。如果通过公司 hostname 访问：
 
 ```sh
-... nguyentrungthaoit/dsh:0.2.1-alpha.4 web --no-open --port 3080 --trusted-host app.company.local:3080
+... nguyentrungthaoit/dsh:0.2.1-alpha.5 web --no-open --port 3080 --trusted-host app.company.local:3080
 ```
 
 ### Headless（单个任务）
@@ -93,7 +93,7 @@ docker run --rm \
   -e DEEPSEEK_API_KEY=sk-... \
   -v /path/to/project:/workspace \
   -w /workspace \
-  nguyentrungthaoit/dsh:0.2.1-alpha.4 \
+  nguyentrungthaoit/dsh:0.2.1-alpha.5 \
   --profile headless "summarize this repository"
 ```
 
@@ -130,12 +130,12 @@ Docker 绑定 `0.0.0.0`，因此 Host 使用 **browse**（浏览容器内目录�
 ```sh
 docker build \
   --build-arg DSH_CLIENT_COMMIT_HASH="$(git rev-parse HEAD)" \
-  -t nguyentrungthaoit/dsh:0.2.1-alpha.4 \
+  -t nguyentrungthaoit/dsh:0.2.1-alpha.5 \
   -t nguyentrungthaoit/dsh:latest \
   .
 
 docker login
-docker push nguyentrungthaoit/dsh:0.2.1-alpha.4
+docker push nguyentrungthaoit/dsh:0.2.1-alpha.5
 docker push nguyentrungthaoit/dsh:latest
 ```
 

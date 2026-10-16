@@ -64,6 +64,9 @@
       "path": "../../settings/settings"
     },
     {
+      "path": "../../skill/skill"
+    },
+    {
       "path": "../../subagent/subagent"
     },
     {

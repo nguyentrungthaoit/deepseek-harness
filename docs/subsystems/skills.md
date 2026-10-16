@@ -12,7 +12,7 @@ Source: [`packages/skill/skill/src/index.ts`](../../packages/skill/skill/src/ind
 
 The registry is host+per-scope layered, the shape the [tools registry](tools.md) established over [dsh-scope](../../packages/core/scope): a registration files into the layer of its calling context's scope, so host rows and repository plugins land in the global layer while a plugin mounted by an agent preset's standing composition lands in that preset's layer, and provider names are unique per layer rather than process-wide. A read merges the global layer with the viewing scope's chain — the nearest layer's entry wins a duplicate skill name outright, and the rank order below decides duplicates only within one layer. Discovery caches are keyed by the resolved scope chain, so re-parenting a scope (a blank-session recompose) is visible to the next read without a registry mutation.
 
-Within one layer, duplicate names resolve by rank, provider order, then local order; summaries sort by name. A rejected `list()` is logged and omitted from an incomplete observation, while an explicit incomplete observation contributes usable candidates without making the result cacheable; malformed candidates fail fast. Each provider factory receives a registration-scoped control whose `invalidate()` clears completed catalogs only while that exact registration remains active and whose signal aborts on failed registration or disposal. An in-flight discovery retries once when its provider generation changes; a second change returns the latest candidates incomplete and uncached. Provider and runtime mutations emit the unfiltered `skills/change` invalidation event; it carries no diff, so consumers refetch `snapshot()` with their own lookup options.
+Within one layer, duplicate names resolve by rank, provider order, then local order; summaries sort by name. A rejected `list()` is logged and omitted from an incomplete observation, while an explicit incomplete observation contributes usable candidates without making the result cacheable; malformed candidates fail fast. Each provider factory receives a registration-scoped control whose `invalidate()` clears completed catalogs only while that exact registration remains active and whose signal aborts on failed registration or disposal. An in-flight discovery retries once when its provider generation changes; a second change returns the latest candidates incomplete and uncached. Provider and runtime mutations, and `ctx.skills.invalidate()` after a host has changed a skill file, emit the unfiltered `skills/change` invalidation event; it carries no diff, so consumers refetch `snapshot()` with their own lookup options.
 
 An array returned by `SkillProvider.list()` is complete-discovery shorthand. `SkillProviderObservation` lets a provider expose candidates that remain directly loadable while reporting that the observation is not authoritative.
 
@@ -122,6 +122,10 @@ interface SkillSummary {
   readonly provider: string
   /** Provider-specific base for relative resources. */
   readonly resourceBase?: SkillResourceBase
+  /** Presentation kind for discovery consumers. Omitted means `skill`. */
+  readonly kind?: 'rule' | 'skill'
+  /** Subagent presentation flag for discovery consumers. Omitted means false. */
+  readonly subagent?: boolean
 }
 ```
 
@@ -234,7 +238,7 @@ The model-facing `skill({ name })` tool validates the kebab-case name, finds the
 
 ## Browser Session catalog
 
-`SkillListRequest` addresses one Session by `sessionId`; `SkillListValue` returns the user-invocable entries with name, description, optional usage guidance, and model-invocation availability. `SessionSkillCatalog` reads the Session cwd and recorded preset without activating an Agent. A live Agent may supply its scoped registry, while a cold Session uses the preset's standing scope.
+`SkillListRequest` addresses one Session by `sessionId`; `SkillListValue` returns the user-invocable entries with name, description, optional usage guidance, model-invocation availability, `kind` (`rule` or `skill`), `subagent`, discovery `source`, and `writable`. `writable` is true only when the winning path is the flat file `<projectRoot>/.agents/skills/<name>.md` inside the Session workspace. A writable row also includes that file's markdown `body` when the body can be read. `skills/write` creates or replaces that file, including a `replaces` rename that writes the new file before unlinking the old one; `skills/delete` removes only that same file. A successful write or delete calls `ctx.skills.invalidate()` when that method is present. A name owned by a different winning path is rejected. `SessionSkillCatalog` reads the Session cwd and recorded preset without activating an Agent. A live Agent may supply its scoped registry, while a cold Session uses the preset's standing scope.
 
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
@@ -255,10 +259,28 @@ Host service backing `ctx.remote.skills` without activating a cold Agent.
  * List the user-invocable skills visible to one Session composition.
  * @param request - Session identity whose cwd and preset select the catalog view.
  * @param signal - caller lifetime carried by the Remote transport; admitted catalog reads retain their existing completion semantics.
- * @returns user-invocable skill metadata without loading skill bodies.
+ * @returns user-invocable skill metadata. Writable rows also include the markdown body when it can be read.
  * @throws RemoteError when the Session cannot be inspected or no registry can serve it.
  */
 @Remote async list(request: SkillListRequest, signal: AbortSignal): Promise<SkillListValue>
+
+/**
+ * Create or replace one flat project skill file inside the Session workspace.
+ * @param request - file name, frontmatter fields, markdown body, and optional previous name.
+ * @param signal - caller lifetime; aborts before a filesystem mutation when already cancelled.
+ * @returns the flat file path that was written.
+ * @throws RemoteError when the name, path, owning skill, or filesystem rejects the write.
+ */
+@Remote async write(request: SkillWriteRequest, signal: AbortSignal): Promise<SkillFileValue>
+
+/**
+ * Delete the winning flat project skill file inside the Session workspace.
+ * @param request - Session identity and kebab-case skill name.
+ * @param signal - caller lifetime; aborts before deletion when already cancelled.
+ * @returns the flat file path that was deleted.
+ * @throws RemoteError when the name is not a writable flat file, or the host cannot unlink it.
+ */
+@Remote async delete(request: SkillDeleteRequest, signal: AbortSignal): Promise<SkillFileValue>
 ```
 
 Source: [`packages/api/session-controller/src/skill-catalog.ts`](../../packages/api/session-controller/src/skill-catalog.ts)
@@ -323,6 +345,12 @@ async snapshot(options: SkillViewOptions = {}): Promise<SkillCatalogSnapshot>
  * @returns the full skill, including body content, or `undefined`.
  */
 async get(name: string, options: SkillViewOptions = {}): Promise<SkillDefinition | undefined>
+
+/**
+ * Drop completed catalogs and emit `skills/change`.
+ * A host calls this after it has already changed a skill file.
+ */
+invalidate(): void
 ```
 
 Source: [`packages/skill/skill/src/index.ts`](../../packages/skill/skill/src/index.ts)

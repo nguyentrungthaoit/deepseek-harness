@@ -152,6 +152,8 @@ export class InputHub implements SessionInputResolver {
           shell.consumeToken(req.guard) ? true : undefined),
         actx.on('slash/input-insert-text', req =>
           shell.insertText(req.text, req.span, req.continue === true) ? true : undefined),
+        actx.on('conversation/input-append-text', req =>
+          shell.appendText(req.text) ? true : undefined),
       ]
       return () => {
         for (const off of offs) off()

@@ -288,6 +288,21 @@ it('reconnects a replacement lexicon source on an explicit subscription refresh'
   expect(draft.references).toEqual(saved.references)
 })
 
+it('appends plain text at the end of the draft and keeps reference chips', async () => {
+  const b = await fixture(saved)
+  expect(b.shell.state.getSnapshot().occurrences).toHaveLength(1)
+  b.binding.ctx.emit('conversation/input-append-text', { text: '/field-list ' })
+  const appended = b.shell.state.getSnapshot()
+  expect(appended.occurrences).toHaveLength(1)
+  expect(appended.draft.endsWith('/field-list ')).toBe(true)
+  b.shell.setDraft('hello')
+  b.binding.ctx.emit('conversation/input-append-text', { text: '/field-list ' })
+  expect(b.shell.state.getSnapshot().draft).toBe('hello/field-list ')
+  b.shell.dispose()
+  expect(b.binding.ctx.emit('conversation/input-append-text', { text: 'x' })).toBeUndefined()
+  expect(b.shell.state.getSnapshot().draft).toBe('hello/field-list ')
+})
+
 it('unsubscribes the lexicon and refuses the old binding after Session disposal', async () => {
   const b = await fixture(saved)
   const source = catalog(['saved'])

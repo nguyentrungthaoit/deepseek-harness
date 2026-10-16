@@ -1,7 +1,7 @@
 import { ToolCallId, createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { ContextFormed } from '@deepseek-ai/dsh-llm'
 import { describe, expect, it } from 'vitest'
-import { Context } from '@deepseek-ai/cordis'
+import { Context, Service } from '@deepseek-ai/cordis'
 import { type Agent, type AgentOptions } from '@deepseek-ai/dsh-agent'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
@@ -46,6 +46,57 @@ function request(parent: Agent, signal = new AbortController().signal) {
 
 function text(blocks: readonly { type: string; text?: string }[]): string {
   return blocks.filter(block => block.type === 'text').map(block => block.text).join('')
+}
+
+interface ListedSkill {
+  readonly name: string
+  readonly description: string
+  readonly invocation: { readonly modelInvocable: boolean; readonly userInvocable: boolean }
+  readonly source: 'project-agents'
+  readonly provider: 'test'
+  readonly subagent?: boolean
+}
+
+function listedSkill(
+  name: string,
+  options: { readonly userInvocable?: boolean; readonly subagent?: boolean } = {},
+): ListedSkill {
+  return {
+    name,
+    description: name,
+    invocation: { modelInvocable: true, userInvocable: options.userInvocable ?? true },
+    source: 'project-agents',
+    provider: 'test',
+    ...options.subagent !== undefined ? { subagent: options.subagent } : {},
+  }
+}
+
+function installSkills(
+  ctx: Context,
+  behavior: {
+    readonly skills?: readonly ListedSkill[]
+    readonly reject?: Error
+    readonly lookups?: Array<{ readonly cwd?: string | undefined; readonly scope?: object | undefined }>
+  },
+): void {
+  new class extends Service {
+    constructor(context: Context) {
+      super(context, 'skills')
+    }
+
+    list(options: { readonly cwd?: string | undefined; readonly scope?: object | undefined }): Promise<readonly ListedSkill[]> {
+      behavior.lookups?.push({ cwd: options.cwd, scope: options.scope })
+      if (behavior.reject !== undefined) return Promise.reject(behavior.reject)
+      return Promise.resolve(behavior.skills ?? [])
+    }
+  }(ctx)
+}
+
+function userTaskText(agent: Agent): string {
+  const message = agent.session.snapshotEvents().find(event =>
+    event.type === 'user/message' && event.data.source.kind === 'user')
+  if (message === undefined || message.type !== 'user/message') throw new Error('child has no user task')
+  return message.data.content.flatMap(block => block.type === 'text' ? [block.text] : []).join('')
 }
 
 describe('startInProcessRun', () => {
@@ -375,6 +426,113 @@ describe('startInProcessRun', () => {
     }, {})).rejects.toThrow('unknown global tool')
     expect(ctx.agents.list()).toHaveLength(beforeAgents)
     expect(ctx.sessions.list()).toHaveLength(beforeSessions)
+  })
+
+  it('leaves the spawned task unchanged when the skill registry is absent', async () => {
+    const { ctx } = await setup([textResponse('driver answer')])
+    const parent = await ctx.agentLoop.create(SessionId('bare-skills'), { provider: 'mock', model: 'mock' }, { cwd: '/workspace/pin' })
+    const prompt = [{ type: 'text' as const, text: 'child task' }]
+    const run = await startInProcessRun({ ...request(parent), prompt }, {})
+    await run.result
+    expect(userTaskText(ctx.agents.get(run.id)!)).toBe('child task')
+    await run.dispose()
+  })
+
+  it('leaves the spawned task unchanged when no user-invocable skill is pinned', async () => {
+    const { ctx } = await setup([textResponse('driver answer')])
+    const parent = await ctx.agentLoop.create(SessionId('unpinned'), { provider: 'mock', model: 'mock' }, { cwd: '/workspace/pin' })
+    installSkills(ctx, {
+      skills: [
+        listedSkill('closed-skill', { subagent: false }),
+        listedSkill('plain-skill'),
+        listedSkill('hidden-skill', { userInvocable: false, subagent: true }),
+      ],
+    })
+    const prompt = [{ type: 'text' as const, text: 'child task  ' }]
+    const run = await startInProcessRun({ ...request(parent), prompt }, {})
+    await run.result
+    expect(userTaskText(ctx.agents.get(run.id)!)).toBe('child task  ')
+    await run.dispose()
+  })
+
+  it('appends pinned /name tokens as the spawned task last line', async () => {
+    const { ctx } = await setup([
+      textResponse('plain'),
+      textResponse('newline'),
+      textResponse('empty'),
+      textResponse('blank'),
+    ])
+    const lookups: Array<{ readonly cwd?: string | undefined; readonly scope?: object | undefined }> = []
+    installSkills(ctx, {
+      lookups,
+      skills: [
+        listedSkill('zeta-skill', { subagent: true }),
+        listedSkill('closed-skill', { subagent: false }),
+        listedSkill('hidden-skill', { userInvocable: false, subagent: true }),
+        listedSkill('plain-skill'),
+        listedSkill('alpha-skill', { subagent: true }),
+      ],
+    })
+    const pinLine = '/alpha-skill /zeta-skill'
+
+    const parent = await ctx.agentLoop.create(SessionId('pinned'), { provider: 'mock', model: 'mock' }, { cwd: '/workspace/pin' })
+    const plain = await startInProcessRun({
+      ...request(parent),
+      prompt: [{ type: 'text', text: 'do the task' }],
+    }, {})
+    await plain.result
+    const child = ctx.agents.get(plain.id)!
+    expect(userTaskText(child)).toBe(`do the task\n${pinLine}`)
+    expect(userTaskText(child).split('\n').at(-1)).toBe(pinLine)
+    expect(userTaskText(child)).not.toContain('/closed-skill')
+    expect(userTaskText(child)).not.toContain('/hidden-skill')
+    expect(userTaskText(child)).not.toContain('/plain-skill')
+    // The child agent graph is circular, so compare the lookup scope by identity.
+    expect(lookups[0]?.cwd).toBe('/workspace/pin')
+    expect(lookups[0]?.scope).toBe(child)
+    await plain.dispose()
+
+    const newlineParent = await ctx.agentLoop.create(SessionId('pinned-newline'), { provider: 'mock', model: 'mock' }, { cwd: '/workspace/pin' })
+    const newline = await startInProcessRun({
+      ...request(newlineParent),
+      prompt: [{ type: 'text', text: 'do the task\n' }],
+    }, {})
+    await newline.result
+    expect(userTaskText(ctx.agents.get(newline.id)!)).toBe(`do the task\n${pinLine}`)
+    await newline.dispose()
+
+    const emptyParent = await ctx.agentLoop.create(SessionId('pinned-empty'), { provider: 'mock', model: 'mock' }, { cwd: '/workspace/pin' })
+    const empty = await startInProcessRun({ ...request(emptyParent), prompt: [] }, {})
+    await empty.result
+    expect(userTaskText(ctx.agents.get(empty.id)!)).toBe(pinLine)
+    await empty.dispose()
+
+    const blankParent = await ctx.agentLoop.create(SessionId('pinned-blank'), { provider: 'mock', model: 'mock' }, { cwd: '/workspace/pin' })
+    const blank = await startInProcessRun({
+      ...request(blankParent),
+      prompt: [{ type: 'text', text: '' }],
+    }, {})
+    await blank.result
+    expect(userTaskText(ctx.agents.get(blank.id)!)).toBe(pinLine)
+    await blank.dispose()
+  })
+
+  it('sends the original spawned task when skill listing fails', async () => {
+    const { ctx } = await setup([textResponse('driver answer')])
+    const parent = await ctx.agentLoop.create(SessionId('list-fails'), { provider: 'mock', model: 'mock' }, { cwd: '/workspace/pin' })
+    const warnings: string[] = []
+    ctx.logger.warn = (format: unknown) => {
+      warnings.push(String(format))
+    }
+    installSkills(ctx, { reject: new Error('catalog unavailable') })
+    const run = await startInProcessRun({
+      ...request(parent),
+      prompt: [{ type: 'text', text: 'child task' }],
+    }, {})
+    await run.result
+    expect(userTaskText(ctx.agents.get(run.id)!)).toBe('child task')
+    expect(warnings.some(warning => warning.includes('catalog unavailable'))).toBe(true)
+    await run.dispose()
   })
 
   it('treats abort after factory publication as a cancelled run with an id', async () => {

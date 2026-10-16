@@ -97,11 +97,11 @@ Read these pages when the package-level contract is not enough; they move from t
 
 #### What the model sees
 
-The shared driver sends the task verbatim as the child's user message and, when requested, shadows the persona and restricts global tool schemas, lookup, execution, and PTC mode SDK bindings in the unpublished child's fresh scope; parent restrictions are not inherited. Tool-guidance plugins can use the assembly scope to omit unavailable guidance; arbitrary static sections are not rewritten by the driver. Spawn supplies no history; fork supplies its balanced seed.
+The shared driver sends the task as the child's user message. When `ctx.skills` lists any user-invocable skill whose `subagent` field is true, it appends one final line of space-separated `/name` tokens in name order. A missing registry, an empty selection, or a failed listing leaves that text unchanged; a listing failure is logged and the task is still sent. When requested, the driver shadows the persona and restricts global tool schemas, lookup, execution, and PTC mode SDK bindings in the unpublished child's fresh scope; parent restrictions are not inherited. Tool-guidance plugins can use the assembly scope to omit unavailable guidance; arbitrary static sections are not rewritten by the driver. Spawn supplies no history; fork supplies its balanced seed.
 
 #### Token effect
 
-Child input is isolated from the parent and grows through the child's own steps. A persona changes repeated prompt text; filtering changes schema or generated SDK cost, and scope-aware guidance changes with the visible capabilities.
+Child input is isolated from the parent and grows through the child's own steps. A persona changes repeated prompt text; filtering changes schema or generated SDK cost, and scope-aware guidance changes with the visible capabilities. Appended `/name` tokens add one trailing line to that child message.
 
 #### KV Cache effect
 

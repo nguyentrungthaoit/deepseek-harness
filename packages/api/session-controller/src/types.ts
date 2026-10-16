@@ -243,7 +243,7 @@ export interface SkillListRequest {
 
 /** One skill available to the Session's human-facing composer. */
 export interface SkillEntry {
-  /** Absolute SKILL.md path when supplied by a filesystem provider. */
+  /** Absolute instruction-file path when supplied by a filesystem provider. */
   readonly path?: string
   /** Kebab-case identifier referenced as `/name`. */
   readonly name: string
@@ -253,6 +253,51 @@ export interface SkillEntry {
   readonly whenToUse?: string
   /** Whether the same skill is also advertised to the model. */
   readonly modelInvocable: boolean
+  /** `rule` only when the winning summary's kind is `rule`; every other value is `skill`. */
+  readonly kind: 'rule' | 'skill'
+  /** True only when the winning summary opts the skill into subagent tasks. */
+  readonly subagent: boolean
+  /** Discovery source of the winning summary. */
+  readonly source: string
+  /**
+   * True only when the winning path is the flat file
+   * `<projectRoot>/.agents/skills/<name>.md` inside the Session workspace.
+   */
+  readonly writable: boolean
+  /**
+   * Markdown body after frontmatter.
+   * Present for a writable flat file when that body can be read; omitted for every read-only row.
+   */
+  readonly body?: string
+}
+
+/** Create or replace one flat project skill file for a Session. */
+export interface SkillWriteRequest {
+  readonly sessionId: SessionId
+  /** Kebab-case file name, without an extension. */
+  readonly name: string
+  /** Short routing description stored in frontmatter. */
+  readonly description: string
+  /** Frontmatter `metadata.kind`. */
+  readonly kind: 'rule' | 'skill'
+  /** Frontmatter `metadata.subagent`. */
+  readonly subagent: boolean
+  /** Markdown body written after the frontmatter. */
+  readonly body: string
+  /** Previous kebab-case name to remove after the new file is written. */
+  readonly replaces?: string
+}
+
+/** Delete the winning flat project skill file for a Session. */
+export interface SkillDeleteRequest {
+  readonly sessionId: SessionId
+  /** Kebab-case name of the flat file to delete. */
+  readonly name: string
+}
+
+/** Path of a flat project skill file a write or delete accepted. */
+export interface SkillFileValue {
+  readonly path: string
 }
 
 /** Human-invocable skills visible through one Session's composition. */

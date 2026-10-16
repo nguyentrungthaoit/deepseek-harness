@@ -211,6 +211,7 @@ export class FileSystemSkillProvider implements SkillProvider {
     const locator = candidate.locator as LocalLocator
     const parsed = await parseSkillFile(locator.path, this.ctx, options.signal, candidate.source === 'bundled')
     if (parsed === undefined) return undefined
+    const presentation = presentationFromMetadata(parsed.metadata)
     return {
       name: parsed.name,
       description: parsed.description,
@@ -220,6 +221,8 @@ export class FileSystemSkillProvider implements SkillProvider {
       provider: this.name,
       resourceBase: { kind: 'directory', path: locator.directory },
       path: parsed.path,
+      kind: presentation.kind,
+      subagent: presentation.subagent,
       ...parsed.metadata !== undefined ? { metadata: parsed.metadata } : {},
       content: parsed.content,
     }
@@ -400,7 +403,6 @@ class SkillWatchManager {
       const current = await resolveRootWatchMode(state.root.path, this.config.followSymlinks)
       // A child unlink can publish an empty catalog before root unlinkDir arrives.
       // Discovery therefore revalidates the retained handle independently.
-      // oxlint-disable-next-line typescript/no-unnecessary-condition -- watcher callbacks can mark unhealthy while the probe awaits
       if (!state.unhealthy && sameWatchMode(watcher.mode, current)) return
     }
     await this.replaceWatcher(state)
@@ -417,7 +419,6 @@ class SkillWatchManager {
       /* v8 ignore next -- The loop returns no handle only when teardown wins between awaited probes. */
       if (watcher === undefined) return
       /* v8 ignore start -- Post-open teardown is timing-dependent; the disposal race has an explicit integration test. */
-      // oxlint-disable-next-line typescript/no-unnecessary-condition -- teardown can race awaited watcher startup
       if (this.closing || state.owners.size === 0) {
         await this.closeWatcher(watcher)
         return
@@ -426,7 +427,6 @@ class SkillWatchManager {
       state.watcher = watcher
       state.unhealthy = false
     } catch (error) {
-      // oxlint-disable-next-line typescript/no-unnecessary-condition -- teardown can race awaited watcher startup
       if (!this.closing) {
         state.unhealthy = true
         this.ctx.logger.warn(`skill-filesystem: failed to watch ${state.root.path}: ${errorMessage(error)}`)
@@ -733,6 +733,7 @@ async function discoverRoot(root: SkillRoot, ctx: Context, provider: string): Pr
     if (locator === undefined) continue
     const parsed = await parseSkillFile(locator.path, ctx, undefined, root.trustedHost === true)
     if (parsed === undefined) continue
+    const presentation = presentationFromMetadata(parsed.metadata)
     skills.push({
       name: parsed.name,
       description: parsed.description,
@@ -744,6 +745,8 @@ async function discoverRoot(root: SkillRoot, ctx: Context, provider: string): Pr
       locator,
       resourceBase: { kind: 'directory', path: locator.directory },
       path: parsed.path,
+      kind: presentation.kind,
+      subagent: presentation.subagent,
       ...parsed.metadata !== undefined ? { metadata: parsed.metadata } : {},
     })
   }
@@ -1034,6 +1037,16 @@ function frontmatterBoolean(data: Record<string, unknown>, key: string): boolean
     }
   }
   throw new TypeError(`frontmatter field "${key}" must be a boolean`)
+}
+
+function presentationFromMetadata(metadata: Record<string, unknown> | undefined): {
+  kind: 'rule' | 'skill'
+  subagent: boolean
+} {
+  return {
+    kind: metadata?.kind === 'rule' ? 'rule' : 'skill',
+    subagent: metadata?.subagent === true,
+  }
 }
 
 function optionalMetadata(data: Record<string, unknown>): { metadata?: Record<string, unknown> } {

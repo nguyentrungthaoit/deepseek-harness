@@ -311,6 +311,75 @@ describe('FileSystemSkillProvider', () => {
     expect(await ctx.skills.get('Bad_Name')).toBeUndefined()
   })
 
+  it('lists presentation kind and subagent from metadata without dropping that object', async () => {
+    const home = await tempDir('skill-presentation')
+    const root = join(home, '.dsh/skills')
+    await mkdir(root, { recursive: true })
+    await writeFile(join(root, 'rule-skill.md'), [
+      '---',
+      'name: rule-skill',
+      'description: A rule',
+      'metadata:',
+      '  kind: rule',
+      '  subagent: true',
+      '  owner: tests',
+      '---',
+      '',
+      'Rule body.',
+    ].join('\n'))
+    await writeFile(join(root, 'explicit-skill.md'), [
+      '---',
+      'name: explicit-skill',
+      'description: Explicit skill kind',
+      'metadata:',
+      '  kind: skill',
+      '  subagent: false',
+      '---',
+      '',
+      'Explicit skill body.',
+    ].join('\n'))
+    await writeFile(join(root, 'missing-kind.md'), [
+      '---',
+      'name: missing-kind',
+      'description: Metadata without kind',
+      'metadata:',
+      '  owner: tests',
+      '---',
+      '',
+      'Missing kind body.',
+    ].join('\n'))
+    await writeFile(join(root, 'string-subagent.md'), [
+      '---',
+      'name: string-subagent',
+      'description: Non-boolean subagent',
+      'metadata:',
+      '  subagent: "true"',
+      '---',
+      '',
+      'String subagent body.',
+    ].join('\n'))
+    await writeFlatSkill(root, 'plain-skill', 'No metadata')
+
+    const ctx = await setupLocal(home)
+    const listed = await ctx.skills.list()
+    const byName = new Map(listed.map(skill => [skill.name, skill]))
+
+    expect(byName.get('rule-skill')).toMatchObject({ kind: 'rule', subagent: true })
+    expect(byName.get('explicit-skill')).toMatchObject({ kind: 'skill', subagent: false })
+    expect(byName.get('missing-kind')).toMatchObject({ kind: 'skill', subagent: false })
+    expect(byName.get('string-subagent')).toMatchObject({ kind: 'skill', subagent: false })
+    expect(byName.get('plain-skill')).toMatchObject({ kind: 'skill', subagent: false })
+    expect(await ctx.skills.get('rule-skill')).toMatchObject({
+      metadata: { kind: 'rule', subagent: true, owner: 'tests' },
+    })
+    expect(await ctx.skills.get('explicit-skill')).toMatchObject({
+      metadata: { kind: 'skill', subagent: false },
+    })
+    expect(await ctx.skills.get('string-subagent')).toMatchObject({
+      metadata: { subagent: 'true' },
+    })
+  })
+
   it('accepts the documented boolean spellings for invocation frontmatter', async () => {
     const home = await tempDir('skill-invocation-booleans')
     const root = join(home, '.dsh/skills')

@@ -110,6 +110,7 @@
     "@deepseek-ai/dsh-client-ui-sidebar-right": "workspace:*",
     "@deepseek-ai/dsh-client-ui-sidebar-terminal": "workspace:*",
     "@deepseek-ai/dsh-client-ui-skill": "workspace:*",
+    "@deepseek-ai/dsh-client-ui-skill-manager": "workspace:*",
     "@deepseek-ai/dsh-client-ui-subagent": "workspace:*",
     "@deepseek-ai/dsh-client-ui-theme": "workspace:*",
     "@deepseek-ai/dsh-client-ui-tool": "workspace:*",

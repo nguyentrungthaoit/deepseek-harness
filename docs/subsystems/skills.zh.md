@@ -12,7 +12,7 @@
 
 注册表采用宿主 + 按 scope 的分层结构，即[工具注册表](tools.zh.md)在 [dsh-scope](../../packages/core/scope) 之上确立的形态：注册会落入调用方上下文 scope 对应的层——宿主行与 repository 插件落入全局层，由 agent（智能体） preset 常驻组合挂载的插件落入该 preset 的层——提供方名称在每层内唯一，而非进程级唯一。读取时将全局层与观察 scope 的链合并：最近层的条目直接赢得重名 skill，下文的 rank 顺序只在单层内裁决重名。发现缓存以解析后的 scope 链为键，因此重设 scope 父级（空会话重组）无需注册表变更即可被下一次读取看到。
 
-在单层内，重名项依次按 rank、提供方顺序和本地顺序确定优先级；摘要按名称排序。提供方的 `list()` 被拒绝时，系统会记录日志，并从不完整观测中省略该提供方的结果；显式的不完整观测会提供可用候选项，但不会使结果变得可缓存；格式错误的候选项快速失败。每个提供方工厂都会接收一项注册作用域内的控制能力；仅当该精确注册仍处于活动状态时，其 `invalidate()` 才会清除已完成目录；注册失败或 dispose（资源释放）时，其信号会中止。若提供方代次在发现进行期间发生变化，该发现会重试一次；若再次变化，则返回最新候选项，并将结果标为不完整且不予缓存。提供方和运行时变更会发出不带过滤条件的 `skills/change` 失效事件；该事件不携带 diff，因此消费方会使用自身的查找选项重新获取 `snapshot()`。
+在单层内，重名项依次按 rank、提供方顺序和本地顺序确定优先级；摘要按名称排序。提供方的 `list()` 被拒绝时，系统会记录日志，并从不完整观测中省略该提供方的结果；显式的不完整观测会提供可用候选项，但不会使结果变得可缓存；格式错误的候选项快速失败。每个提供方工厂都会接收一项注册作用域内的控制能力；仅当该精确注册仍处于活动状态时，其 `invalidate()` 才会清除已完成目录；注册失败或 dispose（资源释放）时，其信号会中止。若提供方代次在发现进行期间发生变化，该发现会重试一次；若再次变化，则返回最新候选项，并将结果标为不完整且不予缓存。提供方和运行时变更，以及宿主在已经改过 skill 文件之后调用的 `ctx.skills.invalidate()`，会发出不带过滤条件的 `skills/change` 失效事件；该事件不携带 diff，因此消费方会使用自身的查找选项重新获取 `snapshot()`。
 
 `SkillProvider.list()` 返回的数组是完整发现的简写形式。`SkillProviderObservation` 允许提供方公开仍可直接加载的候选项，同时报告该观测不具权威性。
 
@@ -122,6 +122,10 @@ interface SkillSummary {
   readonly provider: string
   /** Provider-specific base for relative resources. */
   readonly resourceBase?: SkillResourceBase
+  /** Presentation kind for discovery consumers. Omitted means `skill`. */
+  readonly kind?: 'rule' | 'skill'
+  /** Subagent presentation flag for discovery consumers. Omitted means false. */
+  readonly subagent?: boolean
 }
 ```
 
@@ -234,7 +238,7 @@ interface Config {
 
 ## 浏览器 Session 目录
 
-`SkillListRequest` 通过 `sessionId` 指定一个 Session；`SkillListValue` 返回允许用户调用的条目，其中包含名称、描述、可选使用提示与模型调用可用性。`SessionSkillCatalog` 在不激活 Agent 的前提下读取 Session cwd 与记录的 preset。live Agent 可以提供其作用域 registry，冷 Session 则使用 preset 的 standing scope。
+`SkillListRequest` 通过 `sessionId` 指定一个 Session；`SkillListValue` 返回允许用户调用的条目，其中包含名称、描述、可选使用提示、模型调用可用性、`kind`（`rule` 或 `skill`）、`subagent`、发现来源 `source` 与 `writable`。仅当胜出路径是 Session 工作区内的扁平文件 `<projectRoot>/.agents/skills/<name>.md` 时，`writable` 为 true。可写行在正文可读时还包含该文件的 markdown `body`。`skills/write` 创建或替换该文件；`replaces` 重命名会先写入新文件，再删除旧文件。`skills/delete` 只删除这同一个文件。写入或删除成功后，若存在 `ctx.skills.invalidate()`，则会调用它。名称被另一条胜出路径占用时会被拒绝。`SessionSkillCatalog` 在不激活 Agent 的前提下读取 Session cwd 与记录的 preset。live Agent 可以提供其作用域 registry，冷 Session 则使用 preset 的 standing scope。
 
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
@@ -255,10 +259,28 @@ Host service backing `ctx.remote.skills` without activating a cold Agent.
  * List the user-invocable skills visible to one Session composition.
  * @param request - Session identity whose cwd and preset select the catalog view.
  * @param signal - caller lifetime carried by the Remote transport; admitted catalog reads retain their existing completion semantics.
- * @returns user-invocable skill metadata without loading skill bodies.
+ * @returns user-invocable skill metadata. Writable rows also include the markdown body when it can be read.
  * @throws RemoteError when the Session cannot be inspected or no registry can serve it.
  */
 @Remote async list(request: SkillListRequest, signal: AbortSignal): Promise<SkillListValue>
+
+/**
+ * Create or replace one flat project skill file inside the Session workspace.
+ * @param request - file name, frontmatter fields, markdown body, and optional previous name.
+ * @param signal - caller lifetime; aborts before a filesystem mutation when already cancelled.
+ * @returns the flat file path that was written.
+ * @throws RemoteError when the name, path, owning skill, or filesystem rejects the write.
+ */
+@Remote async write(request: SkillWriteRequest, signal: AbortSignal): Promise<SkillFileValue>
+
+/**
+ * Delete the winning flat project skill file inside the Session workspace.
+ * @param request - Session identity and kebab-case skill name.
+ * @param signal - caller lifetime; aborts before deletion when already cancelled.
+ * @returns the flat file path that was deleted.
+ * @throws RemoteError when the name is not a writable flat file, or the host cannot unlink it.
+ */
+@Remote async delete(request: SkillDeleteRequest, signal: AbortSignal): Promise<SkillFileValue>
 ```
 
 Source: [`packages/api/session-controller/src/skill-catalog.ts`](../../packages/api/session-controller/src/skill-catalog.ts)
@@ -323,6 +345,12 @@ async snapshot(options: SkillViewOptions = {}): Promise<SkillCatalogSnapshot>
  * @returns the full skill, including body content, or `undefined`.
  */
 async get(name: string, options: SkillViewOptions = {}): Promise<SkillDefinition | undefined>
+
+/**
+ * Drop completed catalogs and emit `skills/change`.
+ * A host calls this after it has already changed a skill file.
+ */
+invalidate(): void
 ```
 
 Source: [`packages/skill/skill/src/index.ts`](../../packages/skill/skill/src/index.ts)

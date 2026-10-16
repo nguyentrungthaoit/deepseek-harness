@@ -19,6 +19,7 @@ import type { Agent, AgentHandle } from '@deepseek-ai/dsh-agent'
 import { SessionLogOffset } from '@deepseek-ai/dsh-session'
 import type { SessionEvent, SessionId, SessionLogOffset as SessionLogOffsetType, TurnEndReason } from '@deepseek-ai/dsh-session'
 import { createUserMessage, type ContentBlock } from '@deepseek-ai/dsh-llm'
+import { isUserInvocable, type SkillSummary } from '@deepseek-ai/dsh-skill'
 import {
   appendDelegatedPolicyOverrides,
   applyChildComposition,
@@ -152,6 +153,69 @@ export async function startInProcessRun(
 }
 
 /**
+ * Task content with pinned `/name` tokens, or `prompt` unchanged when the
+ * registry is absent, no skill is pinned, or listing fails.
+ * @param child - published child; its cwd and agent scope select the catalog.
+ * @param prompt - the caller's task content.
+ * @param signal - run cancellation, forwarded to skill listing.
+ * @returns the content sent as the child's user message.
+ */
+async function promptWithPinnedSkills(
+  child: Agent,
+  prompt: ContentBlock[],
+  signal: AbortSignal,
+): Promise<ContentBlock[]> {
+  const skills = child.ctx.get('skills')
+  if (skills === undefined) return prompt
+  let listed: readonly SkillSummary[]
+  try {
+    listed = await skills.list({
+      cwd: child.session.header.cwd,
+      scope: child,
+      signal,
+    })
+  } catch (error: unknown) {
+    child.ctx.logger.warn(`subagent-in-process-driver: skill listing failed: ${String(error)}`)
+    return prompt
+  }
+  const names = listed.filter(isPinnedSubagentSkill).map(skill => skill.name).sort(compareCodeUnits)
+  return appendPinnedSkillLine(prompt, names)
+}
+
+/** User-invocable skill explicitly marked for in-process children. A missing `subagent` field is not pinned. */
+function isPinnedSubagentSkill(skill: SkillSummary): boolean {
+  if (!isUserInvocable(skill)) return false
+  if (!('subagent' in skill)) return false
+  return skill.subagent === true
+}
+
+/** Locale-independent code-unit order, the same order `ctx.skills.list()` already uses. */
+function compareCodeUnits(left: string, right: string): number {
+  if (left < right) return -1
+  if (left > right) return 1
+  return 0
+}
+
+/**
+ * One trailing line of space-separated `/name` tokens.
+ * An empty `names` list returns `prompt` itself.
+ * @param prompt - the caller's task content.
+ * @param names - pinned skill names in the order to emit.
+ * @returns the task content the child should receive.
+ */
+function appendPinnedSkillLine(prompt: ContentBlock[], names: readonly string[]): ContentBlock[] {
+  if (names.length === 0) return prompt
+  const line = names.map(name => `/${name}`).join(' ')
+  const last = prompt.at(-1)
+  if (last?.type === 'text' && last.text.length > 0) {
+    const text = last.text.endsWith('\n') ? `${last.text}${line}` : `${last.text}\n${line}`
+    return [...prompt.slice(0, -1), { type: 'text', text }]
+  }
+  const kept = last?.type === 'text' ? prompt.slice(0, -1) : prompt
+  return [...kept, { type: 'text', text: line }]
+}
+
+/**
  * Wrap a published child in the single run lifecycle that owns signal handoff,
  * one turn, result settlement, and quiescent disposal.
  */
@@ -178,7 +242,8 @@ function drivePublishedRun(
   const result: Promise<SubagentResult> = (async () => {
     try {
       if (!flags.cancelled) {
-        child.followup(createUserMessage({ content: prompt, source: { kind: 'user' } }))
+        const content = await promptWithPinnedSkills(child, prompt, signal)
+        child.followup(createUserMessage({ content, source: { kind: 'user' } }))
         await child.whenIdle()
       }
       return readResult(
@@ -215,7 +280,6 @@ function readResult(
   cancelled: boolean,
   structured?: { captured?: { value: unknown } | undefined },
 ): SubagentResult {
-  // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
   const own = child.session.snapshotEvents(boundary)
   // `droppedUnrun` is deliberately unread: a one-shot prompt is claimed by its
   // awaited first turn almost immediately, and the owner's own teardown is the

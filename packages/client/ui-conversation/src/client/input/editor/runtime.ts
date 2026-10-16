@@ -205,6 +205,22 @@ export class DraftEditorRuntime {
   }
 
   /**
+   * Append plain text at the document end without moving keyboard focus.
+   * Placeholder characters are stripped, matching paste. An empty result is a no-op.
+   * @param text - plain text to append.
+   */
+  appendText(text: string): void {
+    const clean = text.replace(REFERENCE_PLACEHOLDER_RE, '')
+    if (clean === '') return
+    this.applyEdit(() => {
+      $addUpdateTag(SKIP_DOM_SELECTION_TAG)
+      const root = $getRoot()
+      if (root.getChildrenSize() === 0) root.append($createParagraphNode())
+      root.selectEnd().insertText(clean)
+    }, PASTE_TAG)
+  }
+
+  /**
    * The live selection as a detect-coordinate span (menu-launcher synthetic
    * hits replace it on pick); an absent selection answers a collapsed span at
    * the document end.

@@ -2847,7 +2847,7 @@ export interface Config {
 
 ## `@deepseek-ai/dsh-skill`
 
-- `source`: [`packages/skill/skill/src/index.ts:278`](../packages/skill/skill/src/index.ts)
+- `source`: [`packages/skill/skill/src/index.ts:282`](../packages/skill/skill/src/index.ts)
 
 ```ts config-catalog
 /** Skill registry configuration. */
@@ -3538,6 +3538,43 @@ export interface Config {
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-tool-bash-persistent -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-tool-document -->
+<a id="deepseek-aidsh-tool-document"></a>
+
+## `@deepseek-ai/dsh-tool-document`
+
+- `inject`: `tools` · `fs` · `sandbox` · `subprocess` · `sandboxPolicy`
+- `source`: [`packages/document/tool-document/src/index.ts:65`](../packages/document/tool-document/src/index.ts)
+
+```ts config-catalog
+/** Plugin config. Every field is optional; {@link Config} supplies the defaults. */
+export interface Config {
+  /** Maximum file bytes. Larger files fail with `FS_TOO_LARGE` and are not truncated. */
+  maxInputBytes?: number
+  /** Maximum ZIP central-directory entries before the child starts. */
+  maxArchiveEntries?: number
+  /** Maximum declared uncompressed ZIP size before the child starts. */
+  maxUncompressedBytes?: number
+  /** Maximum PDF pages the child may read. */
+  maxPages?: number
+  /** Maximum characters the child may return. */
+  maxExtractedChars?: number
+  /** Child deadline in milliseconds. */
+  timeoutMs?: number
+  /** Default and maximum lines returned by one call. */
+  limit?: number
+  /** Maximum characters returned for one line. */
+  maxLineLength?: number
+  /** Maximum bytes of the selected lines. */
+  maxBytes?: number
+  /** Maximum Excel sheets the child may read. */
+  maxSheets?: number
+  /** Maximum data rows the child may read from one sheet. */
+  maxRowsPerSheet?: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-tool-document -->
 
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-tool-fs -->
 <a id="deepseek-aidsh-tool-fs"></a>
@@ -4397,6 +4434,7 @@ export interface Config {
 | `@deepseek-ai/dsh-client-ui-sidebar-right` | — | [`packages/client/ui-sidebar-right/src/index.ts`](../packages/client/ui-sidebar-right/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-sidebar-terminal` | — | [`packages/client/ui-sidebar-terminal/src/index.ts`](../packages/client/ui-sidebar-terminal/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-skill` | — | [`packages/client/ui-skill/src/index.ts`](../packages/client/ui-skill/src/index.ts) |
+| `@deepseek-ai/dsh-client-ui-skill-manager` | — | [`packages/client/ui-skill-manager/src/index.ts`](../packages/client/ui-skill-manager/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-subagent` | — | [`packages/client/ui-subagent/src/index.ts`](../packages/client/ui-subagent/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-tool` | — | [`packages/client/ui-tool/src/index.ts`](../packages/client/ui-tool/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-trajectory` | — | [`packages/client/ui-trajectory/src/index.ts`](../packages/client/ui-trajectory/src/index.ts) |

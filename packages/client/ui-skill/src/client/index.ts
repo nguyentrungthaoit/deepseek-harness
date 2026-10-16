@@ -19,8 +19,8 @@
  * snapshot locally, so one session costs one RPC. The scope-birth warm hook
  * prewarms the session's key; a preset switch drops that one key (the
  * catalog is the preset's, and a blank session may switch after the warm);
- * connection/reset clears everything — the host
- * catalog may differ across generations. A shared in-flight fetch
+ * connection/reset and the forwarded `skills/change` event clear everything.
+ * The host catalog may differ across generations. A shared in-flight fetch
  * deliberately outlives any single menu interaction: closing the menu must
  * not kill the prewarm other consumers will hit, so it carries its own
  * abort (fired only on invalidation/teardown) while a candidates caller
@@ -34,6 +34,7 @@
 // Type-only: the carrier types, the forwarded Host-event face and the ctx.remote merge.
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/dsh-typert-protocol'
 import type { SkillEntry } from '@deepseek-ai/dsh-api-remotes/client'
 import type {} from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
@@ -46,6 +47,23 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import { SkillRow } from './SkillRow.tsx'
 import { en, NS, zh, type SkillKey } from './locales.ts'
+
+declare module '@deepseek-ai/cordis' {
+  interface Events {
+    /**
+     * Unfiltered skill-catalog invalidation forwarded from the host. No payload.
+     * @mode emit
+     */
+    'skills/change'(): void
+  }
+}
+
+declare module '@deepseek-ai/dsh-typert-protocol' {
+  interface TypertRemoteEventSelection {
+    /** Host `skills/change`, forwarded with no payload. */
+    'skills/change': true
+  }
+}
 
 declare module '@deepseek-ai/dsh-api-session-controller/client' {
   interface SessionReferenceSourceMap {
@@ -230,8 +248,10 @@ export function apply(ctx: ClientContext): void {
   ctx.remote.$on('agent-preset/selected', invalidate)
   ctx.on('connection/reset', clearAll)
   ctx.effect(() => {
+    const offCatalog = ctx.remote.$on('skills/change', clearAll)
     const unregister = inputTriggers.registerSource(source)
     return () => {
+      offCatalog()
       unregister()
       clearAll()
     }

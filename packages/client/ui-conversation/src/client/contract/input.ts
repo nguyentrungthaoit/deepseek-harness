@@ -87,6 +87,11 @@ export interface InsertTextRequest {
   readonly continue?: boolean
 }
 
+/** Scoped request to append plain text at the end of the current draft. */
+export interface AppendTextRequest {
+  readonly text: string
+}
+
 /** Trigger hit used to open one source programmatically. */
 export interface InputTriggerHit {
   readonly trigger: '/' | '@'
@@ -155,6 +160,13 @@ declare module '@deepseek-ai/cordis' {
      * @mode bail
      */
     'slash/input-insert-text'(request: InsertTextRequest): true | undefined
+    /**
+     * Append plain text at the end of the scoped draft.
+     * A busy admission phase leaves the draft unchanged.
+     * @param request - plain text to append.
+     * @mode bail
+     */
+    'conversation/input-append-text'(request: AppendTextRequest): true | undefined
   }
 }
 

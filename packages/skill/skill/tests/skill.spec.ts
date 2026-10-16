@@ -705,6 +705,22 @@ describe('SkillRegistry registry', () => {
     expect(listCalls).toBe(3)
   })
 
+  it('clears completed catalogs when the host invalidates', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SkillRegistry)
+    const provider = new MemoryProvider([memorySkill('review-notes', 'Review', 10)])
+    registerProvider(ctx, provider)
+    await ctx.skills.list()
+    await ctx.skills.list()
+    expect(provider.listCalls).toBe(1)
+    let changes = 0
+    ctx.on('skills/change', () => { changes += 1 })
+    ctx.skills.invalidate()
+    expect(changes).toBe(1)
+    await ctx.skills.list()
+    expect(provider.listCalls).toBe(2)
+  })
+
   it('invalidates only the exact registered provider and ignores its late callbacks', async () => {
     const ctx = new Context()
     await ctx.plugin(SkillRegistry)
@@ -771,7 +787,6 @@ describe('SkillRegistry registry', () => {
     const warnings: string[] = []
     ctx.logger.warn = ((message: unknown) => { warnings.push(String(message)) }) as typeof ctx.logger.warn
     const disposeThrowing = ctx.on('skills/change', () => { throw new Error('observer threw') })
-    // oxlint-disable-next-line typescript/no-misused-promises -- deliberate rejection proves notification containment
     const disposeRejecting = ctx.on('skills/change', () => Promise.reject(new Error('observer rejected')))
     let observed = 0
     const disposeObserver = ctx.on('skills/change', () => { observed += 1 })
@@ -937,7 +952,6 @@ describe('SkillRegistry registry', () => {
       name: 'hostile-failure',
       list() {
         // Deliberately violate the provider contract to prove containment is total.
-        // oxlint-disable-next-line typescript/prefer-promise-reject-errors
         return Promise.reject(hostileFailure)
       },
       async get() {

@@ -14,7 +14,7 @@ Không thấy `tool-document` thì phiên chưa có tool. Làm mục dưới.
 
 ## Gắn tool
 
-Tag image nằm ở `DSH_IMAGE_TAG` trong `docker/compose.env`. Giá trị cần là `0.2.1-alpha.4`. Tag cũ hơn không chứa package, nên gắn plugin cũng không gọi được.
+Tag image nằm ở `DSH_IMAGE_TAG` trong `docker/compose.env`. Giá trị cần là `0.2.1-alpha.5`. Tag cũ hơn không chứa package, nên gắn plugin cũng không gọi được.
 
 Trong container, file preset là `/data/dsh/profiles/web/cordis.patch.yml`. Volume `dsh-home` giữ file này. Trong danh sách plugin của preset `standard`, `ptc` hoặc `cordis`, thêm hàng sau cạnh `tool-fs`:
 

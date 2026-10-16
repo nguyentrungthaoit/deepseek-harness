@@ -333,6 +333,20 @@ export class SessionInputShell implements SessionInput {
   }
 
   /**
+   * Append plain text at the end of the draft.
+   * Busy admission phases and a disposed shell refuse the edit.
+   * @param text - plain text to append.
+   * @returns whether the editor accepted the append.
+   */
+  appendText(text: string): boolean {
+    if (this.disposed) return false
+    const phase = this.snapshot.phase
+    if (phase === 'adjudicating' || phase === 'submitting') return false
+    this.draftEditor.appendText(text)
+    return true
+  }
+
+  /**
    * Enter adjudication + submit transaction + default sink. Effects fan out
    * from the machine; this method only feeds the event. Lock entry
    * (adjudicating/submitting) force-closes the transient layers: the popup
