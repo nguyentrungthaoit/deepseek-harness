@@ -177,3 +177,100 @@ it('rejects a corrupt central directory', () => {
   locator[locator.length - 22 - 20] = 0
   expect(() => { assertZipLimits(locator, open) }).toThrow('corrupt')
 })
+
+/** Byte offsets inside {@link zip64Single}: central entry, ZIP64 record, locator, then EOCD. */
+const RECORD = 47
+const LOCATOR = RECORD + 56
+const EOCD = LOCATOR + 20
+
+function patched(edit: (bytes: Buffer) => void, base: Uint8Array = zip64Single(7)): Buffer {
+  const bytes = Buffer.from(base)
+  edit(bytes)
+  return bytes
+}
+
+it('rejects a corrupt ZIP64 locator or record', () => {
+  const open = limits(10, 1000)
+  const huge = 2n ** 60n
+  const zip64Eocd = Buffer.alloc(22)
+  zip64Eocd.writeUInt32LE(0x06054b50, 0)
+  zip64Eocd.writeUInt16LE(0xffff, 10)
+  expect(() => { assertZipLimits(zip64Eocd, open) }).toThrow('corrupt')
+  const cases: Array<(bytes: Buffer) => void> = [
+    (bytes) => { bytes.writeUInt32LE(1, LOCATOR + 4) },
+    (bytes) => { bytes.writeUInt32LE(2, LOCATOR + 16) },
+    (bytes) => { bytes.writeBigUInt64LE(huge, LOCATOR + 8) },
+    (bytes) => { bytes.writeBigUInt64LE(10_000n, LOCATOR + 8) },
+    (bytes) => { bytes.writeBigUInt64LE(0n, LOCATOR + 8) },
+    (bytes) => { bytes.writeBigUInt64LE(10n, RECORD + 4) },
+    (bytes) => { bytes.writeBigUInt64LE(10_000n, RECORD + 4) },
+    (bytes) => { bytes.writeUInt32LE(1, RECORD + 16) },
+    (bytes) => { bytes.writeUInt32LE(1, RECORD + 20) },
+    (bytes) => { bytes.writeBigUInt64LE(2n, RECORD + 24) },
+    (bytes) => {
+      bytes.writeBigUInt64LE(huge, RECORD + 24)
+      bytes.writeBigUInt64LE(huge, RECORD + 32)
+    },
+    (bytes) => { bytes.writeBigUInt64LE(huge, RECORD + 48) },
+    (bytes) => { bytes.writeBigUInt64LE(huge, RECORD + 40) },
+  ]
+  for (const edit of cases) expect(() => { assertZipLimits(patched(edit), open) }).toThrow('corrupt')
+  expect(EOCD + 22).toBe(zip64Single(7).length)
+})
+
+it('rejects a directory whose entries do not fill it exactly or overrun it', () => {
+  const open = limits(10, 1000)
+  const one = Buffer.from(archive([{ name: 'a.xml', data: Uint8Array.of(1) }]))
+  const eocd = one.length - 22
+  const central = one.readUInt32LE(eocd + 16)
+  const size = one.readUInt32LE(eocd + 12)
+  expect(() => { assertZipLimits(patched((bytes) => { bytes.writeUInt32LE(size + 1, eocd + 12) }, one), open) }).toThrow('corrupt')
+  expect(() => { assertZipLimits(patched((bytes) => { bytes.writeUInt16LE(2, eocd + 10) }, one), open) }).toThrow('corrupt')
+  expect(() => { assertZipLimits(patched((bytes) => { bytes.writeUInt16LE(1, eocd + 4) }, one), open) }).toThrow('corrupt')
+  expect(() => { assertZipLimits(patched((bytes) => { bytes.writeUInt16LE(1, eocd + 6) }, one), open) }).toThrow('corrupt')
+  expect(() => { assertZipLimits(patched((bytes) => { bytes.writeUInt16LE(500, central + 28) }, one), open) }).toThrow('corrupt')
+})
+
+it('walks ZIP64 extra fields and rejects malformed ones', () => {
+  const open = limits(10, 1000)
+  const other = Buffer.alloc(8)
+  other.writeUInt16LE(0x7875, 0)
+  other.writeUInt16LE(4, 2)
+  const sized = Buffer.alloc(12)
+  sized.writeUInt16LE(0x0001, 0)
+  sized.writeUInt16LE(8, 2)
+  sized.writeBigUInt64LE(30n, 4)
+  expect(() => { assertZipLimits(withExtra(Buffer.concat([other, sized])), limits(1, 30)) }).not.toThrow()
+  expect(() => { assertZipLimits(withExtra(Buffer.concat([other, sized])), limits(1, 29)) }).toThrow('maxUncompressedBytes')
+  const overrun = Buffer.alloc(4)
+  overrun.writeUInt16LE(0x0001, 0)
+  overrun.writeUInt16LE(20, 2)
+  expect(() => { assertZipLimits(withExtra(overrun), open) }).toThrow('corrupt')
+  const short = Buffer.alloc(8)
+  short.writeUInt16LE(0x0001, 0)
+  short.writeUInt16LE(4, 2)
+  expect(() => { assertZipLimits(withExtra(short), open) }).toThrow('corrupt')
+})
+
+it('skips an EOCD signature inside the comment and rejects bytes with no EOCD', () => {
+  const comment = `PK\u0005\u0006${'x'.repeat(26)}`
+  expect(() => { assertZipLimits(archive([{ name: 'a.xml', data: Uint8Array.of(1) }], comment), limits(1, 1)) }).not.toThrow()
+  expect(() => { assertZipLimits(Buffer.alloc(40), limits(1, 1)) }).toThrow('corrupt')
+})
+
+/** One stored entry whose 32-bit uncompressed size is the ZIP64 sentinel, with the given central extra field. */
+function withExtra(extra: Buffer): Uint8Array {
+  const central = Buffer.alloc(47 + extra.length)
+  central.writeUInt32LE(0x02014b50, 0)
+  central.writeUInt32LE(0xffffffff, 24)
+  central.writeUInt16LE(1, 28)
+  central.writeUInt16LE(extra.length, 30)
+  central.writeUInt8(0x61, 46)
+  extra.copy(central, 47)
+  const eocd = Buffer.alloc(22)
+  eocd.writeUInt32LE(0x06054b50, 0)
+  eocd.writeUInt16LE(1, 8)
+  eocd.writeUInt16LE(1, 10)
+  eocd.writeUInt32LE(central.length, 12)
+  return Buffer.concat([central, eocd])
+}

@@ -18,6 +18,11 @@ describe('extractPdf', () => {
     ].join('\n'))
   })
 
+  it('accepts a Buffer, which is what the child reads from stdin', async () => {
+    const result = await extractPdf(Buffer.from(textPdf()), open, new AbortController().signal)
+    expect(result.text).toContain('Hello world')
+  })
+
   it('returns a notice when the PDF has no text layer', async () => {
     const result = await extractPdf(emptyTextPdf(), open, new AbortController().signal)
     expect(result).toEqual({ text: '', notice: 'This PDF has no text layer.' })
@@ -26,16 +31,23 @@ describe('extractPdf', () => {
   it('stops at the page cap and the character cap', async () => {
     const signal = new AbortController().signal
     const full = await extractPdf(textPdf(), open, signal)
+    expect(full.capped).toBeUndefined()
     const firstPage = await extractPdf(textPdf(), { maxPages: 1, maxExtractedChars: open.maxExtractedChars }, signal)
     expect(firstPage.notice).toBeUndefined()
     expect(firstPage.text).toContain('--- page 1 ---')
     expect(firstPage.text).not.toContain('--- page 2 ---')
+    expect(firstPage).toMatchObject({ capped: ['pages'], pageCount: 2 })
+    const allPages = await extractPdf(textPdf(), { maxPages: 2, maxExtractedChars: open.maxExtractedChars }, signal)
+    expect(allPages.capped).toBeUndefined()
     const splitAt = full.text.indexOf('\n--- page 2 ---')
     const exact = await extractPdf(textPdf(), { maxPages: open.maxPages, maxExtractedChars: splitAt }, signal)
-    expect(exact.text).toBe(full.text.slice(0, splitAt))
+    expect(exact).toEqual({ text: full.text.slice(0, splitAt), capped: ['chars'] })
+    const whole = await extractPdf(textPdf(), { maxPages: open.maxPages, maxExtractedChars: full.text.length }, signal)
+    expect(whole).toEqual({ text: full.text })
     const partial = await extractPdf(textPdf(), { maxPages: open.maxPages, maxExtractedChars: 8 }, signal)
-    expect(partial.notice).toBeUndefined()
-    expect(partial.text).toBe(full.text.slice(0, 8))
+    expect(partial).toEqual({ text: full.text.slice(0, 8), capped: ['chars'] })
+    const both = await extractPdf(textPdf(), { maxPages: 1, maxExtractedChars: 8 }, signal)
+    expect(both).toEqual({ text: full.text.slice(0, 8), capped: ['chars'] })
   })
 
   it('returns empty text when a cap is below one, and rejects corrupt bytes', async () => {

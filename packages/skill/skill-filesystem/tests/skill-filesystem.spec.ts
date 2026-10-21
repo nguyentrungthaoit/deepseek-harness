@@ -311,7 +311,7 @@ describe('FileSystemSkillProvider', () => {
     expect(await ctx.skills.get('Bad_Name')).toBeUndefined()
   })
 
-  it('lists presentation kind and subagent from metadata without dropping that object', async () => {
+  it('lists the subagent flag from metadata without dropping that object or exposing kind', async () => {
     const home = await tempDir('skill-presentation')
     const root = join(home, '.dsh/skills')
     await mkdir(root, { recursive: true })
@@ -364,11 +364,12 @@ describe('FileSystemSkillProvider', () => {
     const listed = await ctx.skills.list()
     const byName = new Map(listed.map(skill => [skill.name, skill]))
 
-    expect(byName.get('rule-skill')).toMatchObject({ kind: 'rule', subagent: true })
-    expect(byName.get('explicit-skill')).toMatchObject({ kind: 'skill', subagent: false })
-    expect(byName.get('missing-kind')).toMatchObject({ kind: 'skill', subagent: false })
-    expect(byName.get('string-subagent')).toMatchObject({ kind: 'skill', subagent: false })
-    expect(byName.get('plain-skill')).toMatchObject({ kind: 'skill', subagent: false })
+    expect(byName.get('rule-skill')).toMatchObject({ subagent: true })
+    expect(byName.get('explicit-skill')).toMatchObject({ subagent: false })
+    expect(byName.get('missing-kind')).toMatchObject({ subagent: false })
+    expect(byName.get('string-subagent')).toMatchObject({ subagent: false })
+    expect(byName.get('plain-skill')).toMatchObject({ subagent: false })
+    for (const skill of listed) expect(skill).not.toHaveProperty('kind')
     expect(await ctx.skills.get('rule-skill')).toMatchObject({
       metadata: { kind: 'rule', subagent: true, owner: 'tests' },
     })

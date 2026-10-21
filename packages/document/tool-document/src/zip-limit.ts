@@ -69,7 +69,7 @@ function zip64Directory(view: DataView, eocd: number): Directory {
   if (view.getUint32(locator, true) !== ZIP64_LOCATOR_SIGNATURE) throw corruptZip()
   if (view.getUint32(locator + 4, true) !== 0 || view.getUint32(locator + 16, true) > 1) throw corruptZip()
   const recordOffset = view.getBigUint64(locator + 8, true)
-  if (recordOffset < 0n || recordOffset > BigInt(Number.MAX_SAFE_INTEGER)) throw corruptZip()
+  if (recordOffset > BigInt(Number.MAX_SAFE_INTEGER)) throw corruptZip()
   const record = Number(recordOffset)
   if (record + 56 > view.byteLength) throw corruptZip()
   if (view.getUint32(record, true) !== ZIP64_EOCD_SIGNATURE) throw corruptZip()
@@ -84,7 +84,7 @@ function zip64Directory(view: DataView, eocd: number): Directory {
 }
 
 function centralEntry(view: DataView, offset: number, end: number): { next: number; uncompressed: bigint } {
-  if (offset < 0 || end - offset < 46) throw corruptZip()
+  if (end - offset < 46) throw corruptZip()
   if (view.getUint32(offset, true) !== CENTRAL_SIGNATURE) throw corruptZip()
   const uncompressed = view.getUint32(offset + 24, true)
   const nameLength = view.getUint16(offset + 28, true)
@@ -127,8 +127,8 @@ function locateEocd(view: DataView): number {
   throw corruptZip()
 }
 
+/** Directory span from unsigned on-disk fields, so neither value can be negative. */
 function spanOf(offset: bigint, size: bigint, length: number): { start: number; end: number } {
-  if (offset < 0n || size < 0n) throw corruptZip()
   if (offset > BigInt(Number.MAX_SAFE_INTEGER) || size > BigInt(Number.MAX_SAFE_INTEGER)) throw corruptZip()
   const start = Number(offset)
   const end = start + Number(size)

@@ -54,7 +54,7 @@ Session 对象还承载本地提交回显：`session.beginSubmission` 在调用�
 
 正常在线时，transcript 与 steering 回显在 Inbox 接受与领取期间留在 Chat，直到持久消息到达。本地 Chat 消息入档后，其身份保留到 Inbox 水位覆盖 next-turn 或 next-step 领取序号：Chat 已显示真实 Node，而 Chat 与 QueueDock 排除匹配的旧 Inbox 行。其他排队消息照常显示。新的 follow 基线会将已有接收回执的回显按 observed 撤去，使用已接受的附件引用完成结算；尚未确认接收的提交继续保留。待处理或已入档的消息随后由 Host 数据呈现。在领取与入档之间重连时，气泡可能短暂消失；撤去回显只确认接收，不代表执行或失败。
 
-面向用户调用的 `skills/list` 元数据包含胜出提供方可选的指令文件 `path`、发现来源 `source`、`kind`（`rule` 或 `skill`）、`subagent` 与 `writable`。仅当胜出路径是 Session 工作区内的扁平文件 `<projectRoot>/.agents/skills/<name>.md` 时，`writable` 为 true。可读时，可写行还会带上该文件的 Markdown 正文。`skills/write` 与 `skills/delete` 只改这个文件，随后使 skill 注册表失效；名称被另一条胜出路径占用时会被拒绝。输入框可按只读 skill 的 `path` 预览，无需激活冷态 Agent。
+面向用户调用的 `skills/list` 元数据包含胜出提供方可选的指令文件 `path`、发现来源 `source`、`subagent` 与 `writable`。仅当胜出路径是 Session 工作区内的扁平文件 `<projectRoot>/.agents/skills/<name>.md` 时，`writable` 为 true。可读时，可写行还会带上该文件的 Markdown 正文。`skills/write` 与 `skills/delete` 只改这个文件，随后使 skill 注册表失效；名称被另一条胜出路径占用时会被拒绝。输入框可按只读 skill 的 `path` 预览，无需激活冷态 Agent。
 
 Fork 复制 `atSeq` 所选的精确事件前缀，包含切点事件，允许在开放轮次内截取。子会话在合成的 fork 结果和结束事件之前记录继承标记。省略 `atSeq` 时选择最近已结束轮次及其独立尾部，在下一轮次或排队输入之前停止；不存在的事件会被拒绝。聊天操作选择已结束轮次。
 

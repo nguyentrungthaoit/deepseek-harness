@@ -12,7 +12,8 @@ Ask the model to read text and tables from a Word, PDF, or Excel file in the wor
 
 - [Ask the model to read a file](#ask-the-model)
 - [Which files work](#which-files)
-- [Mount the tool](#mount-the-tool)
+- [Check that the tool is available](#check-the-tool)
+- [Added the row with the old guide](#old-guide-row)
 - [Limits and failures](#limits-and-failures)
 - [Further Exploration](#further-exploration)
 
@@ -38,24 +39,31 @@ These extensions work:
 
 These extensions do not work: `.doc`, `.xls`, `.ppt`, `.pptx`, and ordinary text files. Text files stay on `read`.
 
-<a id="mount-the-tool"></a>
-## Mount the tool
+<a id="check-the-tool"></a>
+## Check that the tool is available
 
-The shipped Web presets do not include this tool. Add one row to the preset the session uses. `standard`, `ptc`, and `cordis` are the presets that already include file tools. `minimal` does not.
+The shipped Web presets `standard`, `ptc`, and `cordis` include `read_document`. `minimal` does not. In Docker, the shipped presets include it from image tag `0.2.1-alpha.6`; set `DSH_IMAGE_TAG` in `docker/compose.env`. Images `0.2.1-alpha.4` and `0.2.1-alpha.5` contain the package, but their shipped presets do not include it; only the manual row from the [old guide](#old-guide-row) turns it on there. Images before `0.2.1-alpha.4` do not contain the package, so no configuration adds the tool.
 
-```yaml
-- id: tool-document
-  name: '@deepseek-ai/dsh-tool-document'
-```
+To check, open **Settings → Agent presets**, choose the preset the session uses, and select **View configuration**. Search for `tool-document`. Desktop and SDK profiles do not include it.
 
-Place the row next to `tool-fs`. The package supplies every limit, so `config` is optional. Desktop and SDK profiles do not include this row.
+<a id="old-guide-row"></a>
+## Added the row with the old guide
+
+An earlier version of this guide had you add a `tool-document` block to `/data/dsh/profiles/web/cordis.patch.yml`. That block replaces the preset's whole plugin list, so later changes to the shipped preset never reach you. The tool keeps working. Choose one:
+
+- Keep the block. Nothing changes, but you do not receive future preset changes.
+- Remove exactly the block you added, then restart the container to use the shipped preset. Any other edit you made inside that same block is lost with it. Do this only on image `0.2.1-alpha.6` or later; on `0.2.1-alpha.4` and `0.2.1-alpha.5` the shipped preset does not include the tool, so removing the block removes it.
 
 <a id="limits-and-failures"></a>
 ## Limits and failures
 
-A file larger than 32 MiB fails and is not cut short. A Word or Excel package with more than 2000 ZIP entries, or more than 32 MiB of declared uncompressed size, fails before parsing. A PDF read stops after 50 pages. One call returns at most 2000 lines and 50 KiB of those lines. Excel stops after 32 sheets and 5000 data rows on a sheet. A call that runs longer than 30 seconds is stopped.
+A file larger than 32 MiB fails and is not cut short. A Word or Excel package with more than 2000 ZIP entries, or more than 32 MiB of declared uncompressed size, fails before parsing. One call returns at most 2000 lines and 50 KiB of those lines. A call that runs longer than 30 seconds is stopped; the time spent waiting for a free reader does not count.
 
-A missing sandbox fails the call. Parsing does not continue inside the Web server process. A corrupt or encrypted file fails the call. A PDF with no text layer succeeds and tells the model there is no text to read.
+Extraction also stops at a cap: 50 PDF pages, 32 Excel sheets, 5000 non-empty rows on a sheet (a header row counts), or 1,000,000 characters. The result is marked truncated and carries a notice, for example `Extraction stopped at maxPages (50 of 212 pages).` The text read so far is returned.
+
+At most 2 files are read at once, and 8 more may wait. A call beyond that fails with `read_document is busy; retry after the running reads finish`. Retry after the running reads finish. A file that needs too much memory fails with `read_document ran out of memory; the file is too large to extract`.
+
+A host with no sandbox fails the call with `read_document cannot run because no sandbox is available on this host; do not retry`. Parsing does not continue inside the Web server process. A corrupt or encrypted file fails the call. A PDF with no text layer succeeds and tells the model there is no text to read.
 
 <a id="further-exploration"></a>
 ## Further Exploration

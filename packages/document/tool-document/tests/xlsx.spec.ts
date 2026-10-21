@@ -1,7 +1,8 @@
 /** XLSX extraction keeps stored formula results and stops at the sheet, row, and character caps. */
 import ExcelJS from 'exceljs'
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import { extractXlsx } from '../src/xlsx.ts'
+import { xlsxWithSheetData } from './fixtures/xlsx.ts'
 
 const caps = { maxSheets: 8, maxRowsPerSheet: 50, maxExtractedChars: 10_000 }
 
@@ -13,6 +14,10 @@ async function xlsx(fill: (workbook: ExcelJS.Workbook) => void): Promise<Uint8Ar
   const workbook = new ExcelJS.Workbook()
   fill(workbook)
   return new Uint8Array(await workbook.xlsx.writeBuffer())
+}
+
+async function text(bytes: Uint8Array, limits: typeof caps): Promise<string> {
+  return (await extractXlsx(bytes, limits, signal())).text
 }
 
 it('writes one heading per sheet and TSV rows from cached formula results', async () => {
@@ -42,20 +47,21 @@ it('writes one heading per sheet and TSV rows from cached formula results', asyn
     hidden.getCell('A1').value = 'secret'
     workbook.addWorksheet('Empty')
   })
-  const text = await extractXlsx(bytes, caps, signal())
-  expect(text).toBe([
-    '# Budget',
-    'Name\t\tGap',
-    '0\tfalse\t2\tSUM(1,2)',
-    'hello\t2026-09-16T00:00:00.000Z\t#DIV/0!',
-    'Rich text\tLink\t#N/A\ttrue',
-    '2026-01-02T00:00:00.000Z\t12',
-    'line and tab',
-    'merged',
-    '# Hidden',
-    'secret',
-    '# Empty',
-  ].join('\n'))
+  expect(await extractXlsx(bytes, caps, signal())).toEqual({
+    text: [
+      '# Budget',
+      'Name\t\tGap',
+      '0\tfalse\t2\tSUM(1,2)',
+      'hello\t2026-09-16T00:00:00.000Z\t#DIV/0!',
+      'Rich text\tLink\t#N/A\ttrue',
+      '2026-01-02T00:00:00.000Z\t12',
+      'line and tab',
+      'merged',
+      '# Hidden',
+      'secret',
+      '# Empty',
+    ].join('\n'),
+  })
 })
 
 it('uses a shared formula string when that cell stores no cached result', async () => {
@@ -64,10 +70,27 @@ it('uses a shared formula string when that cell stores no cached result', async 
     sheet.getCell('A1').value = { formula: 'SUM(1,2)', result: 3 }
     sheet.getCell('A2').value = { sharedFormula: 'A1' }
   })
-  expect(await extractXlsx(bytes, caps, signal())).toBe('# Shared\n3\nSUM(1,2)')
+  expect(await text(bytes, caps)).toBe('# Shared\n3\nSUM(1,2)')
 })
 
-it('stops at the sheet cap, the data-row cap, and the character cap', async () => {
+it('writes an empty cell for a shared-formula clone whose master is missing', async () => {
+  const bytes = xlsxWithSheetData(
+    '<row r="1"><c r="A1" t="str"><v>left</v></c><c r="B1"><f t="shared" si="7"/></c><c r="C1" t="str"><v>right</v></c></row>',
+  )
+  expect(await text(bytes, caps)).toBe('# Sheet\nleft\t\tright')
+})
+
+it('skips missing and value-less rows without counting them against the row cap', async () => {
+  const bytes = await xlsx((workbook) => {
+    const sheet = workbook.addWorksheet('Gaps')
+    sheet.getCell('A1').value = 'one'
+    sheet.getRow(2).height = 30
+    sheet.getCell('A4').value = 'four'
+  })
+  expect(await extractXlsx(bytes, { ...caps, maxRowsPerSheet: 2 }, signal())).toEqual({ text: '# Gaps\none\nfour' })
+})
+
+it('stops at the sheet cap, the data-row cap, and the character cap and reports each', async () => {
   const bytes = await xlsx((workbook) => {
     const first = workbook.addWorksheet('One')
     first.getCell('A1').value = 'a'
@@ -76,31 +99,85 @@ it('stops at the sheet cap, the data-row cap, and the character cap', async () =
     workbook.addWorksheet('Two').getCell('A1').value = 'zzzz'
   })
   const full = '# One\na\nbb\t\tc\n# Two\nzzzz'
-  expect(await extractXlsx(bytes, caps, signal())).toBe(full)
-  expect(await extractXlsx(bytes, { ...caps, maxSheets: 0 }, signal())).toBe('')
-  expect(await extractXlsx(bytes, { ...caps, maxSheets: 1 }, signal())).toBe('# One\na\nbb\t\tc')
-  expect(await extractXlsx(bytes, { ...caps, maxRowsPerSheet: 1 }, signal())).toBe('# One\na\n# Two\nzzzz')
+  expect(await extractXlsx(bytes, caps, signal())).toEqual({ text: full })
+  expect(await extractXlsx(bytes, { ...caps, maxSheets: 0 }, signal())).toEqual({ text: '', capped: ['sheets'], sheetCount: 2 })
+  expect(await extractXlsx(bytes, { ...caps, maxSheets: 1 }, signal()))
+    .toEqual({ text: '# One\na\nbb\t\tc', capped: ['sheets'], sheetCount: 2 })
+  expect(await extractXlsx(bytes, { ...caps, maxSheets: 2 }, signal())).toEqual({ text: full })
+  expect(await extractXlsx(bytes, { ...caps, maxRowsPerSheet: 1 }, signal()))
+    .toEqual({ text: '# One\na\n# Two\nzzzz', capped: ['rows'], rowsSheet: 'One' })
   const first = '# One\na\nbb\t\tc'
-  expect(await extractXlsx(bytes, { ...caps, maxExtractedChars: first.length }, signal())).toBe(first)
-  expect(await extractXlsx(bytes, { ...caps, maxExtractedChars: full.length - 1 }, signal())).toBe(full.slice(0, -1))
-  expect(await extractXlsx(bytes, { ...caps, maxExtractedChars: 0 }, signal())).toBe('')
-  expect(await extractXlsx(bytes, { ...caps, maxExtractedChars: 1 }, signal())).toBe('#')
-  expect(await extractXlsx(bytes, { ...caps, maxExtractedChars: 5 }, signal())).toBe('# One')
+  expect(await extractXlsx(bytes, { ...caps, maxExtractedChars: first.length }, signal()))
+    .toEqual({ text: first, capped: ['chars'] })
+  expect(await extractXlsx(bytes, { ...caps, maxExtractedChars: full.length }, signal())).toEqual({ text: full })
+  expect(await extractXlsx(bytes, { ...caps, maxExtractedChars: full.length - 1 }, signal()))
+    .toEqual({ text: full.slice(0, -1), capped: ['chars'] })
+  expect(await text(bytes, { ...caps, maxExtractedChars: 0 })).toBe('')
+  expect(await text(bytes, { ...caps, maxExtractedChars: 1 })).toBe('#')
+  expect(await extractXlsx(bytes, { ...caps, maxExtractedChars: 5 }, signal())).toEqual({ text: '# One', capped: ['chars'] })
+  // A character stop leaves the remaining sheets unread without reporting the sheet cap.
+  expect(await extractXlsx(bytes, { ...caps, maxSheets: 1, maxExtractedChars: 5 }, signal()))
+    .toEqual({ text: '# One', capped: ['chars'] })
+})
+
+it('reports rows and chars together, naming the first sheet whose rows were cut', async () => {
+  const bytes = await xlsx((workbook) => {
+    const first = workbook.addWorksheet('First')
+    first.getCell('A1').value = 'a'
+    first.getCell('A2').value = 'b'
+    const second = workbook.addWorksheet('Second')
+    second.getCell('A1').value = 'c'
+    second.getCell('A2').value = 'd'
+    workbook.addWorksheet('Third').getCell('A1').value = 'long text'
+  })
+  expect(await extractXlsx(bytes, { ...caps, maxRowsPerSheet: 1 }, signal())).toEqual({
+    text: '# First\na\n# Second\nc\n# Third\nlong text',
+    capped: ['rows'],
+    rowsSheet: 'First',
+  })
+  const prefix = '# First\na\n# Second\nc\n# Third\nlong'
+  expect(await extractXlsx(bytes, { maxSheets: 2, maxRowsPerSheet: 1, maxExtractedChars: prefix.length }, signal())).toEqual({
+    text: '# First\na\n# Second\nc',
+    capped: ['sheets', 'rows'],
+    sheetCount: 3,
+    rowsSheet: 'First',
+  })
+  expect(await extractXlsx(bytes, { ...caps, maxRowsPerSheet: 1, maxExtractedChars: prefix.length }, signal())).toEqual({
+    text: prefix,
+    capped: ['rows', 'chars'],
+    rowsSheet: 'First',
+  })
+})
+
+it('stops iterating a sheet once the row cap drops a row', async () => {
+  const bytes = await xlsx((workbook) => {
+    const sheet = workbook.addWorksheet('Long')
+    for (let row = 1; row <= 200; row += 1) sheet.getCell(`A${row}`).value = row
+  })
+  const prototype = Object.getPrototypeOf(new ExcelJS.Workbook().addWorksheet('probe')) as { findRow(row: number): unknown }
+  const findRow = vi.spyOn(prototype, 'findRow')
+  try {
+    expect(await extractXlsx(bytes, { ...caps, maxRowsPerSheet: 2 }, signal()))
+      .toEqual({ text: '# Long\n1\n2', capped: ['rows'], rowsSheet: 'Long' })
+    expect(findRow).toHaveBeenCalledTimes(3)
+  } finally {
+    findRow.mockRestore()
+  }
 })
 
 it('truncates one cell to the remaining characters and counts characters rather than UTF-8 bytes', async () => {
   const wide = await xlsx((workbook) => {
     workbook.addWorksheet('S').getCell('A1').value = 'abcdef'
   })
-  expect(await extractXlsx(wide, { ...caps, maxExtractedChars: 5 }, signal())).toBe('# S\na')
+  expect(await text(wide, { ...caps, maxExtractedChars: 5 })).toBe('# S\na')
 
   const cjk = await xlsx((workbook) => {
     workbook.addWorksheet('字').getCell('A1').value = '字'
   })
-  const text = await extractXlsx(cjk, { ...caps, maxExtractedChars: 3 }, signal())
-  expect(text).toBe('# 字')
-  expect(text.length).toBe(3)
-  expect(Buffer.byteLength(text)).toBeGreaterThan(text.length)
+  const result = await text(cjk, { ...caps, maxExtractedChars: 3 })
+  expect(result).toBe('# 字')
+  expect(result.length).toBe(3)
+  expect(Buffer.byteLength(result)).toBeGreaterThan(result.length)
 })
 
 it('reads a byte view and ignores drawings', async () => {
@@ -115,9 +192,9 @@ it('reads a byte view and ignores drawings', async () => {
   padded.set(bytes, 4)
   const view = padded.subarray(4)
   expect(view.byteOffset).not.toBe(0)
-  const text = await extractXlsx(view, caps, signal())
-  expect(text).toBe('# Pic\ncaption')
-  expect(text).not.toContain('PNG')
+  const result = await text(view, caps)
+  expect(result).toBe('# Pic\ncaption')
+  expect(result).not.toContain('PNG')
 })
 
 it('rejects an aborted signal and bytes that are not a workbook', async () => {

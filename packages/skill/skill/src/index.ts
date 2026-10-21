@@ -71,8 +71,6 @@ export interface SkillSummary {
   readonly provider: string
   /** Provider-specific base for relative resources. */
   readonly resourceBase?: SkillResourceBase
-  /** Presentation kind for discovery consumers. Omitted means `skill`. */
-  readonly kind?: 'rule' | 'skill'
   /** Subagent presentation flag for discovery consumers. Omitted means false. */
   readonly subagent?: boolean
 }
@@ -709,7 +707,6 @@ function runtimeCandidate(skill: SkillDefinition): SkillCandidate {
     source: skill.source,
     provider: skill.provider,
     ...skill.resourceBase !== undefined ? { resourceBase: skill.resourceBase } : {},
-    ...skill.kind !== undefined ? { kind: skill.kind } : {},
     ...skill.subagent !== undefined ? { subagent: skill.subagent } : {},
     rank: RUNTIME_RANK,
     locator: skill,
@@ -781,7 +778,7 @@ function validateDefinition(skill: SkillDefinition): void {
 }
 
 function toSummary(skill: SkillDefinition | SkillCandidate): SkillSummary {
-  const { name, description, whenToUse, invocation, source, provider, resourceBase, kind, subagent } = skill
+  const { name, description, whenToUse, invocation, source, provider, resourceBase, subagent } = skill
   return {
     name,
     ...skill.path === undefined ? {} : { path: skill.path },
@@ -791,7 +788,6 @@ function toSummary(skill: SkillDefinition | SkillCandidate): SkillSummary {
     source,
     provider,
     ...resourceBase !== undefined ? { resourceBase } : {},
-    ...kind !== undefined ? { kind } : {},
     ...subagent !== undefined ? { subagent } : {},
   }
 }

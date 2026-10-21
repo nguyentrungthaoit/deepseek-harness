@@ -1,7 +1,9 @@
 /**
- * Spawn one read-only sandbox child per `read_document` call.
+ * Spawn one read-only sandbox child per `read_document` extraction.
  * The child receives file bytes on stdin and returns JSON text on stdout.
  * Argv never includes the user path. There is no in-host parse fallback.
+ * The spawn passes no `env`: the subprocess service builds every child environment from `scrubbedParentEnv()`,
+ * which already drops credential-shaped names and every `DSH_*` name and restores the user's proxy variables.
  * @module @deepseek-ai/dsh-tool-document/child
  */
 
@@ -10,12 +12,12 @@ import type { Readable as ReadableStream, Writable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
+import { SANDBOX_UNAVAILABLE, SandboxUnavailableError } from '@deepseek-ai/dsh-sandbox'
 import type { SandboxPolicy } from '@deepseek-ai/dsh-sandbox'
 import type {} from '@deepseek-ai/dsh-subprocess'
 import type { SubprocessHandle, SubprocessOutcome } from '@deepseek-ai/dsh-subprocess'
-
-/** Names that must not reach the child environment. */
-const SENSITIVE_ENV = /KEY|SECRET|TOKEN|PASSWORD/i
+import { abortError } from './errors.ts'
+import type { ChildOutput, ChildRequest, ExtractionCap } from './extract.ts'
 
 /** Diagnostic stderr tail. This is not extracted document text. */
 const STDERR_TAIL_BYTES = 16 * 1024
@@ -23,30 +25,20 @@ const STDERR_TAIL_BYTES = 16 * 1024
 /** Extra stdout bytes allowed beyond the extracted-character cap, for JSON framing. */
 const STDOUT_MARGIN_BYTES = 1024
 
-/** Document kinds the child knows how to dispatch. */
-export type DocumentFormat = 'docx' | 'pdf' | 'xlsx'
+/** Time between the polite stop and the forced kill once the parent stops a child. */
+const GRACE_MS = 2_000
 
-/** Caps and format passed to the child as one JSON argv element. */
-export interface ChildRequest {
-  /** Which parser the child should run. */
-  format: DocumentFormat
-  /** Maximum PDF pages the child may read. */
-  maxPages: number
-  /** Maximum characters the child may return. */
-  maxExtractedChars: number
-  /** Maximum Excel sheets the child may read. */
-  maxSheets: number
-  /** Maximum data rows the child may read from one sheet. */
-  maxRowsPerSheet: number
-}
+/** V8's fatal message when the child reaches `--max-old-space-size`. */
+const OUT_OF_MEMORY = /heap out of memory/i
 
-/** Text the child wrote, plus the PDF notice when the file has no text layer. */
-export interface ChildOutput {
-  /** Extracted document text. */
-  text: string
-  /** Set only when a PDF has no text layer. */
-  notice?: string
-}
+/** Valid `capped` entries in the order the child lists them. */
+const CAP_ORDER: readonly ExtractionCap[] = ['pages', 'sheets', 'rows', 'chars']
+
+/** Model-facing error when the host has no usable read-only sandbox. Retrying cannot succeed. */
+const SANDBOX_UNAVAILABLE_MESSAGE = 'read_document cannot run because no sandbox is available on this host; do not retry'
+
+/** Model-facing error when the child dies at its heap cap. The stack is not shown. */
+const OUT_OF_MEMORY_MESSAGE = 'read_document ran out of memory; the file is too large to extract'
 
 /**
  * Disposal hook for one live child.
@@ -67,9 +59,11 @@ export interface ChildRun {
   bytes: Uint8Array
   /** Format and parser caps. */
   request: ChildRequest
-  /** Parent deadline. The same value is the subprocess grace period. */
+  /** Parent deadline, counted from spawn. */
   timeoutMs: number
-  /** Caller cancellation. Abort kills the child and awaits exit. */
+  /** V8 old-space cap for the child, in MiB. */
+  maxHeapMb: number
+  /** Cancellation. Abort kills the child and awaits exit. */
   signal: AbortSignal
   /** Absolute directory the confined process starts in. */
   workspaceRoot: string
@@ -80,34 +74,41 @@ export interface ChildRun {
 }
 
 /**
- * Drop environment entries whose names match `KEY`, `SECRET`, `TOKEN`, or `PASSWORD`.
- * @param source - the environment to copy. Defaults to the parent process.
- * @returns the environment passed to the child.
+ * Thrown when `confine` reports `SANDBOX_UNAVAILABLE`. It keeps that code and tells the model not to retry.
+ * The original error is the `cause`.
  */
-export function scrubbedChildEnv(source: NodeJS.ProcessEnv = process.env): Record<string, string> {
-  const env: Record<string, string> = {}
-  for (const [key, value] of Object.entries(source)) {
-    if (value === undefined || SENSITIVE_ENV.test(key)) continue
-    env[key] = value
+export class DocumentSandboxUnavailableError extends SandboxUnavailableError {
+  /** @param cause - the error `confine` threw. */
+  constructor(cause: unknown) {
+    super('read-only')
+    this.message = SANDBOX_UNAVAILABLE_MESSAGE
+    this.cause = cause
   }
-  return env
 }
 
 /**
  * Argv for one child. Source launches add the tsx loader; built launches run `worker.js`.
- * The last element is the JSON request. The user path is not an argument.
+ * Both cap the V8 heap. The last element is the JSON request. The user path is not an argument.
  * @param moduleUrl - `import.meta.url` of this module, selecting `worker.ts` or `worker.js`.
  * @param execPath - the Node binary to spawn.
- * @param tsxSpecifier - the tsx ESM loader specifier used for source launches.
+ * @param tsxSpecifier - resolves the tsx ESM loader. Called only for source launches.
  * @param request - format and caps encoded as the final argument.
+ * @param maxHeapMb - the `--max-old-space-size` value in MiB.
  * @returns the argv passed to sandbox confinement.
  */
-export function childArgv(moduleUrl: string, execPath: string, tsxSpecifier: string, request: ChildRequest): string[] {
+export function childArgv(
+  moduleUrl: string,
+  execPath: string,
+  tsxSpecifier: () => string,
+  request: ChildRequest,
+  maxHeapMb: number,
+): string[] {
   const source = moduleUrl.endsWith('.ts')
   const worker = fileURLToPath(new URL(source ? './worker.ts' : './worker.js', moduleUrl))
   const payload = JSON.stringify(request)
-  if (source) return [execPath, '--import', tsxSpecifier, worker, payload]
-  return [execPath, worker, payload]
+  const heap = `--max-old-space-size=${maxHeapMb}`
+  if (source) return [execPath, heap, '--import', tsxSpecifier(), worker, payload]
+  return [execPath, heap, worker, payload]
 }
 
 /**
@@ -121,22 +122,65 @@ export function stdoutByteCap(maxExtractedChars: number): number {
 
 /**
  * Parse the child's stdout JSON.
+ * `capped` must be a non-empty array of known caps in {@link ExtractionCap} order without duplicates.
  * @param raw - the full stdout text.
- * @returns the extracted text and the optional PDF notice.
+ * @returns the extracted text, the optional PDF notice, and the caps with their counts.
  */
 export function parseChildOutput(raw: string): ChildOutput {
   let value: unknown
   try {
     value = JSON.parse(raw)
   } catch (error) {
+    /* v8 ignore next -- JSON.parse throws a SyntaxError */
     const reason = error instanceof Error ? error.message : String(error)
     throw new Error(`read_document child returned invalid JSON: ${reason}`)
   }
-  if (typeof value !== 'object' || value === null) throw new Error('read_document child returned an unexpected result')
-  if (!('text' in value) || typeof value.text !== 'string') throw new Error('read_document child returned an unexpected result')
-  const notice = 'notice' in value ? value.notice : undefined
-  if (notice !== undefined && typeof notice !== 'string') throw new Error('read_document child returned an unexpected result')
-  return notice === undefined ? { text: value.text } : { text: value.text, notice }
+  if (typeof value !== 'object' || value === null) throw unexpectedOutput()
+  const record: Record<string, unknown> = { ...value }
+  if (typeof record.text !== 'string') throw unexpectedOutput()
+  const notice = optionalString(record.notice)
+  const capped = parseCapped(record.capped)
+  const pageCount = optionalNumber(record.pageCount)
+  const sheetCount = optionalNumber(record.sheetCount)
+  const rowsSheet = optionalString(record.rowsSheet)
+  return {
+    text: record.text,
+    ...notice === undefined ? {} : { notice },
+    ...capped === undefined ? {} : { capped },
+    ...pageCount === undefined ? {} : { pageCount },
+    ...sheetCount === undefined ? {} : { sheetCount },
+    ...rowsSheet === undefined ? {} : { rowsSheet },
+  }
+}
+
+function unexpectedOutput(): Error {
+  return new Error('read_document child returned an unexpected result')
+}
+
+function optionalString(value: unknown): string | undefined {
+  if (value === undefined || typeof value === 'string') return value
+  throw unexpectedOutput()
+}
+
+function optionalNumber(value: unknown): number | undefined {
+  if (value === undefined || typeof value === 'number') return value
+  throw unexpectedOutput()
+}
+
+function parseCapped(value: unknown): ExtractionCap[] | undefined {
+  if (value === undefined) return undefined
+  if (!Array.isArray(value) || value.length === 0) throw unexpectedOutput()
+  const capped: ExtractionCap[] = []
+  let previous = -1
+  for (const item of value) {
+    const index = CAP_ORDER.findIndex(cap => cap === item)
+    // An unknown entry has no cap; a duplicate or out-of-order entry does not move forward.
+    const cap = CAP_ORDER[index]
+    if (cap === undefined || index <= previous) throw unexpectedOutput()
+    capped.push(cap)
+    previous = index
+  }
+  return capped
 }
 
 class ChildOutputCapError extends Error {
@@ -144,11 +188,6 @@ class ChildOutputCapError extends Error {
     super('read_document child output exceeded its byte cap')
     this.name = 'ChildOutputCapError'
   }
-}
-
-function abortError(signal: AbortSignal): Error {
-  if (signal.reason instanceof Error) return signal.reason
-  return new Error('read_document aborted')
 }
 
 function chunkBuffer(chunk: Buffer | string): Buffer {
@@ -170,26 +209,34 @@ async function readStdout(stdout: ReadableStream, maxBytes: number): Promise<str
 
 function childFailure(handle: SubprocessHandle, outcome: SubprocessOutcome): Error {
   const detail = handle.collected.stderr?.readFrom(0).text.trim() ?? ''
+  if (OUT_OF_MEMORY.test(detail)) return new Error(OUT_OF_MEMORY_MESSAGE)
   if (detail.length > 0) return new Error(`read_document child failed: ${detail}`)
   if (outcome.exitCode === null) return new Error('read_document child was stopped')
   return new Error(`read_document child failed with exit code ${outcome.exitCode}`)
 }
 
+function isSandboxUnavailable(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === SANDBOX_UNAVAILABLE
+}
+
 /**
  * Confine and spawn one child, then wait until it exits.
- * `SANDBOX_UNAVAILABLE` from `confine` propagates. Timeout, abort, and disposal kill the child and await exit.
+ * `SANDBOX_UNAVAILABLE` from `confine` becomes {@link DocumentSandboxUnavailableError}.
+ * Timeout, abort, and disposal kill the child and await exit. The deadline starts at spawn.
  * @param ctx - the plugin context providing `sandbox` and `subprocess`.
- * @param run - bytes, request, deadline, and the disposal hook.
- * @returns the child's text and optional notice.
+ * @param run - bytes, request, deadline, heap cap, and the disposal hook.
+ * @returns the child's text, optional notice, and caps.
  */
 export async function runChild(ctx: Context, run: ChildRun): Promise<ChildOutput> {
   run.signal.throwIfAborted()
-  const argv = childArgv(import.meta.url, process.execPath, import.meta.resolve('tsx/esm'), run.request)
+  const argv = childArgv(import.meta.url, process.execPath, () => import.meta.resolve('tsx/esm'), run.request, run.maxHeapMb)
   const confined = await ctx.sandbox.confine(argv, {
     mode: 'read-only',
     workspaceRoot: run.workspaceRoot,
     ...run.sessionId === undefined ? {} : { sessionId: run.sessionId },
-  }, run.signal)
+  }, run.signal).catch((error: unknown) => {
+    throw isSandboxUnavailable(error) ? new DocumentSandboxUnavailableError(error) : error
+  })
   run.signal.throwIfAborted()
   const handle = ctx.subprocess.spawn({
     argv: confined.argv,
@@ -199,9 +246,8 @@ export async function runChild(ctx: Context, run: ChildRun): Promise<ChildOutput
       stdout: 'pipe',
       stderr: { maxBytes: STDERR_TAIL_BYTES },
     },
-    graceMs: run.timeoutMs,
+    graceMs: GRACE_MS,
     signal: run.signal,
-    env: scrubbedChildEnv(),
   })
   const watched = run.watch.watch(handle)
   let timedOut = false

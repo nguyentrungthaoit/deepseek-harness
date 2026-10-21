@@ -122,8 +122,6 @@ interface SkillSummary {
   readonly provider: string
   /** Provider-specific base for relative resources. */
   readonly resourceBase?: SkillResourceBase
-  /** Presentation kind for discovery consumers. Omitted means `skill`. */
-  readonly kind?: 'rule' | 'skill'
   /** Subagent presentation flag for discovery consumers. Omitted means false. */
   readonly subagent?: boolean
 }
@@ -238,7 +236,7 @@ interface Config {
 
 ## 浏览器 Session 目录
 
-`SkillListRequest` 通过 `sessionId` 指定一个 Session；`SkillListValue` 返回允许用户调用的条目，其中包含名称、描述、可选使用提示、模型调用可用性、`kind`（`rule` 或 `skill`）、`subagent`、发现来源 `source` 与 `writable`。仅当胜出路径是 Session 工作区内的扁平文件 `<projectRoot>/.agents/skills/<name>.md` 时，`writable` 为 true。可写行在正文可读时还包含该文件的 markdown `body`。`skills/write` 创建或替换该文件；`replaces` 重命名会先写入新文件，再删除旧文件。`skills/delete` 只删除这同一个文件。写入或删除成功后，若存在 `ctx.skills.invalidate()`，则会调用它。名称被另一条胜出路径占用时会被拒绝。`SessionSkillCatalog` 在不激活 Agent 的前提下读取 Session cwd 与记录的 preset。live Agent 可以提供其作用域 registry，冷 Session 则使用 preset 的 standing scope。
+`SkillListRequest` 通过 `sessionId` 指定一个 Session；`SkillListValue` 返回允许用户调用的条目，其中包含名称、描述、可选使用提示、模型调用可用性、`subagent`、发现来源 `source` 与 `writable`。仅当胜出路径是 Session 工作区内的扁平文件 `<projectRoot>/.agents/skills/<name>.md` 时，`writable` 为 true。可写行还包含该文件的不透明 `version`（列举时由 `fs.stat` 取得），并在正文可读时包含 markdown `body`。`skills/write` 创建或替换该文件；`replaces` 重命名会先写入新文件，再删除旧文件。`skills/delete` 只删除这同一个文件。写入时 `body` 可省略：对已有文件，省略 `body` 会保留磁盘上的正文；新建时省略 `body` 会写入空正文。保存已有文件时就地编辑 frontmatter，只设置 `name`、`description` 和 `metadata.subagent`；其他键（如 `disable-model-invocation`、`whenToUse` 或其他 `metadata` 条目，包括旧文件中已无作用的 `metadata.kind`）、键顺序和注释都会保留，已有 frontmatter 格式错误时以 `gateway/bad-request` 拒绝且不写入。`skills/write` 与 `skills/delete` 上的 `expectedVersion` 用于防止并发修改：编辑或改名仅在版本仍匹配时替换文件，新建（或改名目标）在文件已存在时失败，删除在 unlink 之前比较版本。不匹配时返回带 `{ name }` 的 `skills/conflict` `RemoteError`。写入或删除成功后，若存在 `ctx.skills.invalidate()`，则会调用它。名称被另一条胜出路径占用时会被拒绝。`SessionSkillCatalog` 在不激活 Agent 的前提下读取 Session cwd 与记录的 preset。live Agent 可以提供其作用域 registry，冷 Session 则使用 preset 的 standing scope。
 
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
@@ -259,26 +257,32 @@ Host service backing `ctx.remote.skills` without activating a cold Agent.
  * List the user-invocable skills visible to one Session composition.
  * @param request - Session identity whose cwd and preset select the catalog view.
  * @param signal - caller lifetime carried by the Remote transport; admitted catalog reads retain their existing completion semantics.
- * @returns user-invocable skill metadata. Writable rows also include the markdown body when it can be read.
+ * @returns user-invocable skill metadata. Writable rows also include the file version and markdown body when each can be read.
  * @throws RemoteError when the Session cannot be inspected or no registry can serve it.
  */
 @Remote async list(request: SkillListRequest, signal: AbortSignal): Promise<SkillListValue>
 
 /**
  * Create or replace one flat project skill file inside the Session workspace.
- * @param request - file name, frontmatter fields, markdown body, and optional previous name.
+ * An existing file (same name, or the `replaces` source) keeps every frontmatter key,
+ * key order, and comment except `name`, `description`, and
+ * `metadata.subagent`, and keeps its body when `request.body` is omitted.
+ * @param request - file name, frontmatter fields, optional markdown body, optional previous name, and optional expected version.
  * @param signal - caller lifetime; aborts before a filesystem mutation when already cancelled.
  * @returns the flat file path that was written.
- * @throws RemoteError when the name, path, owning skill, or filesystem rejects the write.
+ * @throws RemoteError `skills/conflict` when the file changed since `expectedVersion` or during the write;
+ *   `gateway/bad-request` when the name, path, owning skill, or existing frontmatter rejects the write;
+ *   other codes when the filesystem fails.
  */
 @Remote async write(request: SkillWriteRequest, signal: AbortSignal): Promise<SkillFileValue>
 
 /**
  * Delete the winning flat project skill file inside the Session workspace.
- * @param request - Session identity and kebab-case skill name.
+ * @param request - Session identity, kebab-case skill name, and optional expected version.
  * @param signal - caller lifetime; aborts before deletion when already cancelled.
  * @returns the flat file path that was deleted.
- * @throws RemoteError when the name is not a writable flat file, or the host cannot unlink it.
+ * @throws RemoteError `skills/conflict` when the file changed since `expectedVersion`; other codes when the
+ *   name is not a writable flat file or the host cannot unlink it.
  */
 @Remote async delete(request: SkillDeleteRequest, signal: AbortSignal): Promise<SkillFileValue>
 ```

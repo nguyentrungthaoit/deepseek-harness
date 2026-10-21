@@ -143,7 +143,7 @@ Host 的 `ctx.workspaceFiles` 服务与生成的 `workspaceFiles` Remote 命名�
 - **`files`**——`builtin`，以 `openTab('files')` 打开。工作区目录树，经 `list` 懒加载，按展开目录建立监听，用 `tab.actions.openResource(fileAddressFor(sessionId, root, path))` 在自己所在 pane 打开文件（[README](../../packages/client/ui-sidebar-files/README.zh.md)）。
 - **`browser`**——可多开的 `builtin`，以 `openTab('browser', { params: { url? } })` 打开。Chat 的[链接偏好](../../packages/client/ui-chat/README.zh.md)决定 Assistant Markdown 是否在此打开 HTTP(S) 链接。它在默认 sandbox 下接受公共与 loopback HTTP(S) 目标，本地文件改用 Document Preview，并使用应用已知的 iframe history（[README](../../packages/client/ui-sidebar-browser/README.zh.md)）。
 - **`subagentchat`**——`builtin`，`dsh-resource://subagentchat/session/<child>?parent=<parent>&mode=<mode>`。资源提供方保留一个显式寻址的 subagent Conversation，并通过共享 Conversation Factory 渲染（[README](../../packages/client/ui-subagent/README.zh.md)）。
-- **`skills`**——`builtin`，由引导页入口以 `openTab('skills')` 打开。列出会话项目的规则和技能。可写行可以编辑、删除，并标成子任务技能；在对话中使用会把 `/name ` 追加到输入框（[README](../../packages/client/ui-skill-manager/README.zh.md)）。
+- **`skills`**——`builtin`，由引导页入口以 `openTab('skills')` 打开。按“可编辑”和“只读”分组列出会话项目的技能，并提供详情页和创建、编辑表单。可写技能可以编辑、删除，并标成子任务技能；在对话中使用会把 `/name ` 追加到输入框（[README](../../packages/client/ui-skill-manager/README.zh.md)）。
 
 <a id="not-built"></a>
 ## 不做

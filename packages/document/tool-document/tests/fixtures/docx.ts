@@ -81,7 +81,12 @@ export function sampleDocx(): Uint8Array {
   ])
 }
 
-function storedZip(files: readonly { name: string; data: Buffer }[]): Uint8Array {
+/**
+ * Uncompressed ZIP archive of the given entries.
+ * @param files - entry names and contents, in archive order.
+ * @returns stored ZIP bytes.
+ */
+export function storedZip(files: readonly { name: string; data: Buffer }[]): Uint8Array {
   const locals: Buffer[] = []
   const centrals: Buffer[] = []
   let offset = 0

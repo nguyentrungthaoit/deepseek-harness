@@ -4,12 +4,13 @@ import { access, lstat, unlink } from 'node:fs/promises'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-agent-preset-registry/types'
-import type { FileSystem } from '@deepseek-ai/dsh-fs'
+import { FsError, type FileSystem, type FsVersion, type FsWriteIntent } from '@deepseek-ai/dsh-fs'
 import { SessionQueryError } from '@deepseek-ai/dsh-session-query'
 import { isSkillName, isUserInvocable } from '@deepseek-ai/dsh-skill'
 import type { SkillSummary } from '@deepseek-ai/dsh-skill'
 import type { ScopeKey } from '@deepseek-ai/dsh-scope'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
+import { isMap, isScalar, parseDocument, type Document } from 'yaml'
 import type {
   SkillDeleteRequest,
   SkillEntry,
@@ -52,23 +53,32 @@ export class SessionSkillCatalog extends TypertRemoteService {
    * List the user-invocable skills visible to one Session composition.
    * @param request - Session identity whose cwd and preset select the catalog view.
    * @param signal - caller lifetime carried by the Remote transport; admitted catalog reads retain their existing completion semantics.
-   * @returns user-invocable skill metadata. Writable rows also include the markdown body when it can be read.
+   * @returns user-invocable skill metadata. Writable rows also include the file version and markdown body when each can be read.
    * @throws RemoteError when the Session cannot be inspected or no registry can serve it.
    */
   @Remote
   async list(request: SkillListRequest, signal: AbortSignal): Promise<SkillListValue> {
     void signal
     await using opened = await this.openCatalog(request.sessionId)
-    const projectRoot = await findProjectRoot(opened.cwd, this.ctx.get('fs'))
+    const fs = this.ctx.get('fs')
+    const projectRoot = await findProjectRoot(opened.cwd, fs)
     try {
       const skills = (await opened.registry.list({ cwd: opened.cwd, scope: opened.scope })).filter(isUserInvocable)
       const entries: SkillEntry[] = []
       for (const skill of skills) {
         const entry = skillEntry(skill, projectRoot, opened.cwd)
-        const body = entry.writable
-          ? await writableSkillBody(opened.registry, skill.name, opened.cwd, opened.scope)
-          : undefined
-        entries.push(body === undefined ? entry : { ...entry, body })
+        if (!entry.writable || entry.path === undefined) {
+          entries.push(entry)
+          continue
+        }
+        // Stat before reading the body so a later change makes this version stale.
+        const version = await writableSkillVersion(fs, entry.path)
+        const body = await writableSkillBody(opened.registry, skill.name, opened.cwd, opened.scope)
+        entries.push({
+          ...entry,
+          ...body === undefined ? {} : { body },
+          ...version === undefined ? {} : { version },
+        })
       }
       return { skills: entries }
     } catch (error: unknown) {
@@ -78,17 +88,21 @@ export class SessionSkillCatalog extends TypertRemoteService {
 
   /**
    * Create or replace one flat project skill file inside the Session workspace.
-   * @param request - file name, frontmatter fields, markdown body, and optional previous name.
+   * An existing file (same name, or the `replaces` source) keeps every frontmatter key,
+   * key order, and comment except `name`, `description`, and
+   * `metadata.subagent`, and keeps its body when `request.body` is omitted.
+   * @param request - file name, frontmatter fields, optional markdown body, optional previous name, and optional expected version.
    * @param signal - caller lifetime; aborts before a filesystem mutation when already cancelled.
    * @returns the flat file path that was written.
-   * @throws RemoteError when the name, path, owning skill, or filesystem rejects the write.
+   * @throws RemoteError `skills/conflict` when the file changed since `expectedVersion` or during the write;
+   *   `gateway/bad-request` when the name, path, owning skill, or existing frontmatter rejects the write;
+   *   other codes when the filesystem fails.
    */
   @Remote
   async write(request: SkillWriteRequest, signal: AbortSignal): Promise<SkillFileValue> {
     signal.throwIfAborted()
-    const kind = skillKindOf(request.kind)
     const description = requiredString(request.description, 'description')
-    const body = requiredString(request.body, 'body')
+    const body = request.body === undefined ? undefined : requiredString(request.body, 'body')
     if (typeof request.subagent !== 'boolean') {
       throw new RemoteError('gateway/bad-request', 'skill subagent must be a boolean', {})
     }
@@ -98,6 +112,7 @@ export class SessionSkillCatalog extends TypertRemoteService {
     const file = flatSkillFile(projectRoot, opened.cwd, request.name)
     const skills = await this.listedSkills(opened)
     const replaces = request.replaces
+    let source: SkillSource | undefined
     if (replaces !== undefined) {
       assertSkillName(replaces)
       const previous = flatSkillFile(projectRoot, opened.cwd, replaces)
@@ -106,32 +121,37 @@ export class SessionSkillCatalog extends TypertRemoteService {
       if (await skillPathInfo(fs, file, signal) !== undefined) {
         throw new RemoteError('gateway/bad-request', `skill "${request.name}" already exists at "${file}"`, {})
       }
+      source = await readSkillSource(fs, previous, opened.cwd, replaces, signal)
     } else {
       assertNameFree(skills, request.name, file)
       const existing = await skillPathInfo(fs, file, signal)
       if (existing !== undefined && existing.type !== 'file') {
         throw new RemoteError('gateway/bad-request', `skill path "${file}" is not a regular file`, {})
       }
+      if (existing !== undefined) source = await readSkillSource(fs, file, opened.cwd, request.name, signal)
     }
-    const content = skillDocument({
-      name: request.name,
-      description,
-      kind,
-      subagent: request.subagent,
-      body,
-    })
-    await writeSkillFile(fs, file, opened.cwd, content, signal)
-    if (replaces !== undefined) {
+    if (request.expectedVersion !== undefined && source?.version !== request.expectedVersion) {
+      throw skillConflict(replaces ?? request.name)
+    }
+    const fields = { name: request.name, description, subagent: request.subagent }
+    const content = source === undefined
+      ? skillDocument({ ...fields, body: body ?? '' })
+      : editedSkillDocument(source, fields, body)
+    const intent: FsWriteIntent = source === undefined || replaces !== undefined
+      ? { kind: 'createIfAbsent' }
+      : { kind: 'replaceIfVersion', version: source.version }
+    await writeSkillFile(fs, file, opened.cwd, content, intent, request.name, signal)
+    if (replaces !== undefined && source !== undefined) {
       const previous = flatSkillFile(projectRoot, opened.cwd, replaces)
       try {
-        await deleteHostSkillFile(fs, previous, opened.cwd, signal)
+        await deleteHostSkillFile(fs, previous, opened.cwd, signal, { name: replaces, version: source.version })
       } catch (error: unknown) {
         observeSkillMutation(opened.registry)
         throw new RemoteError(
           'gateway/internal',
           `skill "${request.name}" was written, but the old file is still present at "${previous}"`,
           {},
-          error instanceof Error ? { cause: error } : undefined,
+          { cause: error },
         )
       }
     }
@@ -141,10 +161,11 @@ export class SessionSkillCatalog extends TypertRemoteService {
 
   /**
    * Delete the winning flat project skill file inside the Session workspace.
-   * @param request - Session identity and kebab-case skill name.
+   * @param request - Session identity, kebab-case skill name, and optional expected version.
    * @param signal - caller lifetime; aborts before deletion when already cancelled.
    * @returns the flat file path that was deleted.
-   * @throws RemoteError when the name is not a writable flat file, or the host cannot unlink it.
+   * @throws RemoteError `skills/conflict` when the file changed since `expectedVersion`; other codes when the
+   *   name is not a writable flat file or the host cannot unlink it.
    */
   @Remote
   async delete(request: SkillDeleteRequest, signal: AbortSignal): Promise<SkillFileValue> {
@@ -155,7 +176,10 @@ export class SessionSkillCatalog extends TypertRemoteService {
     const file = flatSkillFile(projectRoot, opened.cwd, request.name)
     const skills = await this.listedSkills(opened)
     assertWritableWinner(skills, request.name, file, opened.cwd)
-    await deleteHostSkillFile(fs, file, opened.cwd, signal)
+    const expected = request.expectedVersion === undefined
+      ? undefined
+      : { name: request.name, version: request.expectedVersion }
+    await deleteHostSkillFile(fs, file, opened.cwd, signal, expected)
     observeSkillMutation(opened.registry)
     return { path: file }
   }
@@ -244,10 +268,6 @@ export class SessionSkillCatalog extends TypertRemoteService {
 
 export default SessionSkillCatalog
 
-function skillKind(skill: { readonly name: string; readonly kind?: 'rule' | 'skill' }): 'rule' | 'skill' {
-  return skill.kind === 'rule' ? 'rule' : 'skill'
-}
-
 function skillSubagent(skill: { readonly name: string; readonly subagent?: boolean }): boolean {
   return skill.subagent === true
 }
@@ -260,16 +280,10 @@ function skillEntry(skill: SkillSummary, projectRoot: string, workspaceRoot: str
     description: skill.description,
     ...skill.whenToUse === undefined ? {} : { whenToUse: skill.whenToUse },
     modelInvocable: skill.invocation.modelInvocable,
-    kind: skillKind(skill),
     subagent: skillSubagent(skill),
     source: skill.source,
     writable: skill.path !== undefined && samePath(skill.path, file) && isInsidePath(workspaceRoot, skill.path),
   }
-}
-
-function skillKindOf(kind: string): 'rule' | 'skill' {
-  if (kind === 'rule' || kind === 'skill') return kind
-  throw new RemoteError('gateway/bad-request', 'skill kind must be "rule" or "skill"', {})
 }
 
 function requiredString(value: string, field: string): string {
@@ -339,7 +353,6 @@ function ownedSkillMessage(name: string, path: string | undefined): string {
 function skillDocument(skill: {
   readonly name: string
   readonly description: string
-  readonly kind: 'rule' | 'skill'
   readonly subagent: boolean
   readonly body: string
 }): string {
@@ -348,7 +361,6 @@ function skillDocument(skill: {
     `name: ${skill.name}`,
     `description: ${yamlScalar(skill.description)}`,
     'metadata:',
-    `  kind: ${skill.kind}`,
     `  subagent: ${skill.subagent ? 'true' : 'false'}`,
     '---',
     skill.body,
@@ -378,19 +390,131 @@ async function skillPathInfo(fs: FileSystem, file: string, signal: AbortSignal) 
   }
 }
 
+/** Existing skill file whose frontmatter and body a write edits. */
+interface SkillSource {
+  /** Version observed before the file was read. */
+  readonly version: FsVersion
+  /** Parsed frontmatter mapping, with comments and key order. */
+  readonly frontmatter: Document
+  /** Text after the closing `---` line, unchanged. */
+  readonly body: string
+}
+
+function skillConflict(name: string, error?: unknown): RemoteError {
+  return new RemoteError(
+    'skills/conflict',
+    `skill "${name}" changed on disk`,
+    { name },
+    error === undefined ? undefined : { cause: error },
+  )
+}
+
+function isVersionRejection(error: unknown): boolean {
+  return error instanceof FsError && (error.code === 'FS_STALE_VERSION' || error.code === 'FS_NOT_OBSERVED')
+}
+
+async function readSkillSource(
+  fs: FileSystem,
+  file: string,
+  workspaceRoot: string,
+  name: string,
+  signal: AbortSignal,
+): Promise<SkillSource> {
+  let version: FsVersion
+  let raw: string
+  try {
+    const target = await fs.resolve(file, { signal })
+    assertResolvedSkillPath(file, workspaceRoot, fs.processPath(target))
+    const info = await fs.stat(target, signal)
+    if (info === undefined) throw skillConflict(name)
+    if (info.type !== 'file') {
+      throw new RemoteError('gateway/bad-request', `skill path "${file}" is not a regular file`, {})
+    }
+    version = info.version
+    raw = await fs.readText(target, signal)
+  } catch (error: unknown) {
+    if (error instanceof RemoteError) throw error
+    if (signal.aborted) throw new RemoteError('gateway/cancelled', 'skill write was aborted', {})
+    throw new RemoteError('gateway/internal', `skill file "${file}" could not be read: ${String(error)}`, {})
+  }
+  return { version, ...parseSkillSource(raw, file) }
+}
+
+/** Split and parse frontmatter with the delimiter rules `skill-filesystem` reads. */
+function parseSkillSource(raw: string, file: string): Pick<SkillSource, 'frontmatter' | 'body'> {
+  const malformed = (reason: string) => new RemoteError(
+    'gateway/bad-request',
+    `skill file "${file}" has malformed frontmatter: ${reason}`,
+    {},
+  )
+  const firstLineEnd = raw.indexOf('\n')
+  if (firstLineEnd < 0 || raw.slice(0, firstLineEnd).replace(/\r$/, '') !== '---') {
+    throw malformed('the file does not start with a --- line')
+  }
+  const start = firstLineEnd + 1
+  let lineStart = start
+  let closing: { readonly start: number; readonly bodyStart: number } | undefined
+  while (closing === undefined) {
+    const nextNewline = raw.indexOf('\n', lineStart)
+    const lineEnd = nextNewline < 0 ? raw.length : nextNewline
+    if (raw.slice(lineStart, lineEnd).replace(/\r$/, '') === '---') {
+      closing = { start: lineStart, bodyStart: nextNewline < 0 ? raw.length : nextNewline + 1 }
+    } else if (nextNewline < 0) {
+      throw malformed('no closing --- line')
+    } else {
+      lineStart = nextNewline + 1
+    }
+  }
+  const frontmatter = parseDocument(raw.slice(start, closing.start))
+  const [error] = frontmatter.errors
+  if (error !== undefined) throw malformed(error.message)
+  if (!isMap(frontmatter.contents)) throw malformed('frontmatter is not a mapping')
+  const metadata = frontmatter.get('metadata', true)
+  if (metadata !== undefined && !isMap(metadata) && !(isScalar(metadata) && metadata.value === null)) {
+    throw malformed('metadata is not a mapping')
+  }
+  return { frontmatter, body: raw.slice(closing.bodyStart) }
+}
+
+/** Existing file with only the request-owned frontmatter fields set. */
+function editedSkillDocument(
+  source: SkillSource,
+  fields: {
+    readonly name: string
+    readonly description: string
+    readonly subagent: boolean
+  },
+  body: string | undefined,
+): string {
+  const frontmatter = source.frontmatter
+  frontmatter.set('name', fields.name)
+  frontmatter.set('description', fields.description)
+  const metadata = frontmatter.get('metadata', true)
+  if (isMap(metadata)) {
+    metadata.set('subagent', fields.subagent)
+  } else {
+    frontmatter.set('metadata', frontmatter.createNode({ subagent: fields.subagent }))
+  }
+  // lineWidth 0 keeps long scalars on one line instead of folding them.
+  return `---\n${frontmatter.toString({ lineWidth: 0 })}---\n${body ?? source.body}`
+}
+
 async function writeSkillFile(
   fs: FileSystem,
   file: string,
   workspaceRoot: string,
   content: string,
+  intent: FsWriteIntent,
+  name: string,
   signal: AbortSignal,
 ): Promise<void> {
   try {
     const target = await fs.resolve(file, { signal })
     assertResolvedSkillPath(file, workspaceRoot, fs.processPath(target))
-    await fs.writeText(target, content, undefined, signal)
+    await fs.writeText(target, content, intent, signal)
   } catch (error: unknown) {
     if (error instanceof RemoteError) throw error
+    if (isVersionRejection(error)) throw skillConflict(name, error)
     if (signal.aborted) throw new RemoteError('gateway/cancelled', 'skill write was aborted', {})
     throw new RemoteError('gateway/internal', `skill write failed: ${String(error)}`, {})
   }
@@ -401,6 +525,7 @@ async function deleteHostSkillFile(
   file: string,
   workspaceRoot: string,
   signal: AbortSignal,
+  expected?: { readonly name: string; readonly version: FsVersion },
 ): Promise<void> {
   signal.throwIfAborted()
   let hostPath: string
@@ -411,6 +536,11 @@ async function deleteHostSkillFile(
     const mapped = fs.processPathFromHostPath(executionPath)
     if (mapped === undefined || resolve(mapped) !== resolve(executionPath)) {
       throw new RemoteError('gateway/internal', 'skill delete is unavailable', {})
+    }
+    if (expected !== undefined) {
+      // `ctx.fs` has no guarded unlink: a change landing between this stat and the unlink is still deleted.
+      const current = await fs.stat(target, signal)
+      if (current?.version !== expected.version) throw skillConflict(expected.name)
     }
     hostPath = executionPath
   } catch (error: unknown) {
@@ -443,6 +573,25 @@ function observeSkillMutation(registry: object): void {
   const invalidate = 'invalidate' in registry ? registry.invalidate : undefined
   if (typeof invalidate !== 'function') return
   invalidate.call(registry)
+}
+
+/**
+ * Current version of one writable skill file, or `undefined` when it cannot be read.
+ * @param fs - the filesystem that serves the Session workspace, when mounted.
+ * @param file - absolute flat skill file path.
+ * @returns the file version, or `undefined` when the filesystem is absent or the file is missing or unreadable.
+ */
+async function writableSkillVersion(fs: FileSystem | undefined, file: string): Promise<FsVersion | undefined> {
+  if (fs === undefined) return undefined
+  let info
+  try {
+    info = await fs.stat(await fs.resolve(file))
+  } catch (error: unknown) {
+    // An unreadable version leaves only this row without a write guard.
+    void error
+    return undefined
+  }
+  return info?.type === 'file' ? info.version : undefined
 }
 
 /**

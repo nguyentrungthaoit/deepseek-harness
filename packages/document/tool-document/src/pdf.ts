@@ -9,6 +9,7 @@ import { Worker as Thread, type Transferable } from 'node:worker_threads'
 import { fileURLToPath } from 'node:url'
 import { getDocument, PDFWorker } from 'pdfjs-dist/legacy/build/pdf.mjs'
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist/legacy/build/pdf.mjs'
+import type { ChildOutput } from './extract.ts'
 
 /** Items from `getTextContent` without `includeMarkedContent`. */
 type PdfTextItems = Awaited<ReturnType<PDFPageProxy['getTextContent']>>['items']
@@ -60,12 +61,14 @@ interface PdfExtractCaps {
  * @param caps - page and character limits. A limit below 1 returns empty text after a successful parse.
  * @param signal - cancels worker startup and page reads.
  * @returns extracted text, or `{ text: '', notice }` when the scanned pages have no text layer.
+ * `capped` is `['chars']` when the character cap dropped text, else `['pages']` with `pageCount`
+ * when the document has more pages than `caps.maxPages`.
  */
 export async function extractPdf(
   bytes: Uint8Array,
   caps: PdfExtractCaps,
   signal: AbortSignal,
-): Promise<{ text: string; notice?: string }> {
+): Promise<ChildOutput> {
   signal.throwIfAborted()
   const worker = startWorker()
   let bridge: PDFWorker | undefined
@@ -75,7 +78,8 @@ export async function extractPdf(
     signal.throwIfAborted()
     bridge = PDFWorker.create({ port: workerPort(worker.thread) })
     loading = getDocument({
-      data: bytes.slice(),
+      // The child reads stdin into a Buffer, and PDF.js rejects Buffer. Copy into a plain Uint8Array.
+      data: new Uint8Array(bytes),
       worker: bridge,
       standardFontDataUrl: standardFontDataUrl(),
       BinaryDataFactory: PdfStandardFontData,
@@ -132,7 +136,8 @@ async function raceSignal<T>(promise: Promise<T>, signal: AbortSignal, crashed: 
   signal.throwIfAborted()
   const subscription = new AbortController()
   const aborted = new Promise<never>((_, reject) => {
-    const onAbort = (): void => { reject(signal.reason) }
+    // Reject with the raw reason, as throwIfAborted does. A bare abort() reason is a DOMException.
+    const onAbort = (): void => { reject(signal.reason as Error) }
     signal.addEventListener('abort', onAbort, { once: true, signal: subscription.signal })
   })
   try {
@@ -147,9 +152,10 @@ async function collectPages(
   caps: PdfExtractCaps,
   signal: AbortSignal,
   crashed: Promise<never>,
-): Promise<{ text: string; notice?: string }> {
+): Promise<ChildOutput> {
   let text = ''
   let sawText = false
+  let charsCapped = false
   const pageLimit = Math.min(pdf.numPages, caps.maxPages)
   for (let pageNumber = 1; pageNumber <= pageLimit; pageNumber += 1) {
     signal.throwIfAborted()
@@ -159,10 +165,16 @@ async function collectPages(
     const separator = text.length === 0 ? '' : '\n'
     const appended = appendCapped(text, `${separator}--- page ${pageNumber} ---\n${body}`, caps.maxExtractedChars)
     text = appended.text
-    if (appended.full) break
+    if (appended.full) {
+      charsCapped = true
+      break
+    }
   }
-  if (!sawText) return { text: '', notice: NO_TEXT_LAYER }
-  return { text }
+  const result: ChildOutput = sawText ? { text } : { text: '', notice: NO_TEXT_LAYER }
+  // A character stop leaves later pages unread, but the character cap is what the model can act on.
+  if (charsCapped) return { ...result, capped: ['chars'] }
+  if (pdf.numPages > pageLimit) return { ...result, capped: ['pages'], pageCount: pdf.numPages }
+  return result
 }
 
 async function pageBody(pdf: PDFDocumentProxy, pageNumber: number, signal: AbortSignal, crashed: Promise<never>): Promise<string> {
@@ -196,6 +208,7 @@ function linesFromItems(items: PdfTextItems): string {
   return lines.join('\n').replace(/\n$/, '')
 }
 
+/** Append up to the cap. `full` is true when part of `chunk` was dropped. */
 function appendCapped(text: string, chunk: string, maxChars: number): { text: string; full: boolean } {
   const room = maxChars - text.length
   if (room <= 0) return { text, full: true }

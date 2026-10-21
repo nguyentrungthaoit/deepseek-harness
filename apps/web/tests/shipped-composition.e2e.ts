@@ -488,6 +488,7 @@ const EXPECTED_TOOLS = [
   'list_agents',
   'present',
   'read',
+  'read_document',
   'read_image',
   'schedule_create',
   'schedule_delete',

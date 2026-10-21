@@ -233,8 +233,15 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
       readonly childSessionId: SessionId
       readonly reason: 'corrupt' | 'unsupported' | 'unavailable'
     }
+    'skills/conflict': { readonly name: string }
   }
 }
+
+/**
+ * Opaque freshness token of a flat skill file. It is the `FsVersion` that
+ * `ctx.fs` reports for the file; clients pass it back unchanged and never interpret it.
+ */
+export type SkillFileVersion = Branded<'FsVersion'>
 
 /** Session-addressed request for the human-invocable skill catalog. */
 export interface SkillListRequest {
@@ -253,8 +260,6 @@ export interface SkillEntry {
   readonly whenToUse?: string
   /** Whether the same skill is also advertised to the model. */
   readonly modelInvocable: boolean
-  /** `rule` only when the winning summary's kind is `rule`; every other value is `skill`. */
-  readonly kind: 'rule' | 'skill'
   /** True only when the winning summary opts the skill into subagent tasks. */
   readonly subagent: boolean
   /** Discovery source of the winning summary. */
@@ -269,23 +274,39 @@ export interface SkillEntry {
    * Present for a writable flat file when that body can be read; omitted for every read-only row.
    */
   readonly body?: string
+  /**
+   * File version observed when the catalog was listed.
+   * Present for a writable flat file whose metadata can be read; omitted for every read-only row.
+   */
+  readonly version?: SkillFileVersion
 }
 
-/** Create or replace one flat project skill file for a Session. */
+/**
+ * Create or replace one flat project skill file for a Session. Writing an
+ * existing file (same name, or the `replaces` source) sets only `name`,
+ * `description`, and `metadata.subagent`; every other
+ * frontmatter key, key order, and comment stays.
+ */
 export interface SkillWriteRequest {
   readonly sessionId: SessionId
   /** Kebab-case file name, without an extension. */
   readonly name: string
   /** Short routing description stored in frontmatter. */
   readonly description: string
-  /** Frontmatter `metadata.kind`. */
-  readonly kind: 'rule' | 'skill'
   /** Frontmatter `metadata.subagent`. */
   readonly subagent: boolean
-  /** Markdown body written after the frontmatter. */
-  readonly body: string
+  /**
+   * Markdown body written after the frontmatter. When omitted, an existing
+   * file keeps its body and a new file gets an empty body.
+   */
+  readonly body?: string
   /** Previous kebab-case name to remove after the new file is written. */
   readonly replaces?: string
+  /**
+   * Version the client last saw for the edited file, or for the `replaces`
+   * source. A different or missing file rejects with `skills/conflict`.
+   */
+  readonly expectedVersion?: SkillFileVersion
 }
 
 /** Delete the winning flat project skill file for a Session. */
@@ -293,6 +314,8 @@ export interface SkillDeleteRequest {
   readonly sessionId: SessionId
   /** Kebab-case name of the flat file to delete. */
   readonly name: string
+  /** Version the client last saw; a different or missing file rejects with `skills/conflict`. */
+  readonly expectedVersion?: SkillFileVersion
 }
 
 /** Path of a flat project skill file a write or delete accepted. */

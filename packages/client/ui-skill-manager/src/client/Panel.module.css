@@ -1,3 +1,6 @@
+/* Cards and document surfaces use the settings card material (R20, card fill
+ * and stroke); the form uses the nested editor module fill (R16), as the
+ * Models settings page does. Every color is a `--dsw-alias-*` token. */
 .root {
   display: flex;
   flex: 1 1 auto;
@@ -5,127 +8,645 @@
   height: 100%;
   min-height: 0;
   color: var(--dsw-alias-label-primary);
-  font-size: var(--dsh-content-font-size-secondary, 13px);
-  line-height: 1.5;
+  font-size: 13px;
+  line-height: 18px;
 }
 
+/* One header row for every page: title and actions on the list, a breadcrumb elsewhere. */
 .header {
   display: flex;
   flex: 0 0 auto;
   gap: 4px;
   align-items: center;
-  justify-content: flex-end;
   box-sizing: border-box;
   height: 38px;
   padding: 0 8px 0 16px;
   border-bottom: 0.5px solid var(--dsw-alias-border-l3);
 }
 
+.title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.spacer {
+  flex: 1 1 auto;
+}
+
+.iconButton {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-caption);
+  cursor: pointer;
+}
+
+.iconButton:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-secondary);
+}
+
+.iconButton:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.iconButton:focus-visible {
+  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: 1px;
+}
+
+.crumb {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  max-width: 100%;
+  margin-left: -8px;
+  padding: 4px 8px;
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.crumb:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+/* The search field under the list header, aligned with the cards' edges. */
+.search {
+  flex: 0 0 auto;
+  padding: 12px 8px 0 16px;
+}
+
+/* The scrolling page; the shared scrollbar skin with a small track inset. */
 .body {
   flex: 1 1 auto;
+  min-width: 0;
   min-height: 0;
   margin-right: 2px;
-  padding: 8px 0 8px 8px;
+  padding: 12px 6px 20px 16px;
   overflow: auto;
   scrollbar-gutter: stable;
+  --dsh-scrollbar-track-margin: 4px;
 }
 
-.body::-webkit-scrollbar-track {
-  margin: 2px;
+.group + .group {
+  margin-top: 20px;
 }
 
-.status {
+.groupTitle {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  margin: 0 0 8px;
+  color: var(--dsw-alias-label-primary);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 22px;
+}
+
+.groupCount {
+  color: var(--dsw-alias-label-caption);
+  font-size: 13px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+.cards {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  align-items: flex-start;
-  padding: 16px;
-}
-
-.statusLine {
-  margin: 0;
-  color: var(--dsw-alias-label-secondary);
-}
-
-.notice {
-  margin: 0 8px 8px;
-  color: var(--dsw-alias-label-secondary);
-}
-
-.group {
-  margin: 8px 8px 4px;
-  color: var(--dsw-alias-label-secondary);
-  font-size: var(--dsh-content-font-size-secondary, 13px);
-  font-weight: 500;
-  line-height: 1.5;
-}
-
-.list {
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.row {
+/*
+ * A card opens its skill: the name button stretches over the whole card, and
+ * the insert button and switch at the card's end sit above that stretch.
+ */
+.card {
+  position: relative;
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin: 0 8px 8px 0;
-  padding: 8px 10px;
+  gap: 12px;
+  align-items: flex-start;
+  box-sizing: border-box;
+  min-width: 0;
+  padding: 12px 12px 12px 14px;
+  border: 0.5px solid var(--dsw-alias-settings-card-stroke);
+  border-radius: var(--dsw-radius-xl);
+  background: var(--dsw-alias-settings-card-fill);
+  transition: background-color 120ms ease;
+}
+
+.card:hover {
+  background: var(--dsw-alias-interactive-bg-hover-solid);
+}
+
+.cardIcon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 32px;
+  height: 32px;
+  border: 0.5px solid var(--dsw-alias-border-l3);
   border-radius: var(--dsw-radius-md);
+  color: var(--dsw-alias-label-secondary);
 }
 
-.row:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
+.cardMain {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }
 
-.name {
+.cardOpen {
+  max-width: 100%;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  text-align: left;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.cardOpen::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--dsw-radius-xl);
+}
+
+.cardOpen:focus-visible {
+  outline: none;
+}
+
+.cardOpen:focus-visible::after {
+  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: 2px;
+}
+
+.cardDescription {
+  display: -webkit-box;
   margin: 0;
   overflow: hidden;
-  white-space: nowrap;
+  color: var(--dsw-alias-label-secondary);
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+/* Source and Subagent chips under a card's description or a detail title. */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+  margin-top: 4px;
+}
+
+.chip {
+  max-width: 100%;
+  overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.description,
-.source {
+.cardEnd {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  flex: none;
+  gap: 4px;
+  align-items: center;
+  min-height: 32px;
+}
+
+/* Shown on hover or keyboard focus for a mouse; always shown on touch. */
+.insert {
+  opacity: 0;
+  transition: opacity 0.15s ease-in-out;
+}
+
+.card:hover .insert,
+.card:focus-within .insert {
+  opacity: 1;
+}
+
+@media (pointer: coarse) {
+  .insert {
+    opacity: 1;
+  }
+}
+
+.skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.skeletonRow {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 14px;
+  border: 0.5px solid var(--dsw-alias-settings-card-stroke);
+  border-radius: var(--dsw-radius-xl);
+}
+
+.skeletonLines {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.skeletonBar {
+  width: min(220px, 85%);
+  height: 10px;
+  border-radius: var(--dsw-radius-xs);
+}
+
+.skeletonName {
+  width: min(120px, 50%);
+}
+
+.skeletonFill {
+  border-color: transparent;
+  background: var(--dsw-alias-bg-skeleton);
+  animation: dsh-skill-skeleton 2s cubic-bezier(0.36, 0, 0.64, 1) infinite;
+}
+
+@keyframes dsh-skill-skeleton {
+  0% { opacity: 1; }
+  40% { opacity: 0.6; }
+  80%, 100% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeletonFill { animation: none; }
+  .insert { transition: none; }
+  .card { transition: none; }
+}
+
+.centered {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+  padding: 48px 16px;
+  text-align: center;
+}
+
+.centeredText {
   margin: 0;
   color: var(--dsw-alias-label-secondary);
 }
 
-.actions {
+.notice {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-module-platform);
+}
+
+.noticeText {
+  flex: 1 1 auto;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.noticeAction {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--dsw-alias-state-business-primary);
+  font: inherit;
+  cursor: pointer;
+}
+
+/* Detail header: icon frame beside the name and chips, then the description and actions. */
+.hero {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 0 20px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l3);
+}
+
+.heroHead {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  min-width: 0;
+}
+
+.heroIcon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 48px;
+  height: 48px;
+  border: 0.5px solid var(--dsw-alias-border-l3);
+  border-radius: var(--dsw-radius-lg);
+  background: var(--dsw-alias-settings-card-fill);
+  color: var(--dsw-alias-label-secondary);
+}
+
+.heroTitle {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.heroTitle .chips {
+  margin-top: 2px;
+}
+
+.heroName {
+  margin: 0;
+  overflow: hidden;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 24px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.heroDescription {
+  margin: 0;
+  color: var(--dsw-alias-label-secondary);
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+
+.heroActions {
   display: flex;
   flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tooltipAnchor {
+  display: inline-flex;
+}
+
+/* Red ink inside a 30% red frame, with a red hover wash. */
+.danger {
+  color: var(--dsw-alias-state-error-primary);
+  border-color: color-mix(in srgb, var(--dsw-alias-state-error-primary) 30%, transparent);
+  --dsw-alias-interactive-bg-hover: color-mix(in srgb, var(--dsw-alias-state-error-primary) 8%, transparent);
+}
+
+.dangerSolid {
+  background: var(--dsw-alias-state-error-primary);
+  color: var(--dsw-alias-label-primary-inverted);
+}
+
+.dangerSolid:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 88%, var(--dsw-alias-label-primary));
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.sectionTitle {
+  margin: 0;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.sectionText {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+/* A settings card holding one fact or control group. */
+.panelCard {
+  display: flex;
+  flex-direction: column;
   gap: 4px;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  border: 0.5px solid var(--dsw-alias-settings-card-stroke);
+  border-radius: var(--dsw-radius-xl);
+  background: var(--dsw-alias-settings-card-fill);
+}
+
+.path {
+  margin: 0;
+  color: var(--dsw-alias-label-tertiary);
+  font-family: var(--ds-font-family-code);
+  font-size: 12px;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+}
+
+.muted {
+  margin: 0;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/*
+ * The rendered skill: a document card with reading line height. It never
+ * widens the page; code blocks and wide tables scroll inside it.
+ */
+.document {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+  padding: 14px 16px;
+  overflow-wrap: anywhere;
+  border: 0.5px solid var(--dsw-alias-settings-card-stroke);
+  border-radius: var(--dsw-radius-xl);
+  background: var(--dsw-alias-settings-card-fill);
+  line-height: 1.7;
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+}
+
+.document > * > :first-child {
+  margin-top: 0;
+}
+
+.document > * > :last-child {
+  margin-bottom: 0;
+}
+
+.document pre {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+/* Subagent switches turn the accent blue when on, with a white thumb in both themes. */
+.toggle.toggle[aria-checked='true'] {
+  background: var(--dsw-alias-state-business-primary);
+}
+
+.toggle.toggle[aria-checked='true'] > span {
+  background: var(--dsw-static-neutral-bluish-00);
+}
+
+.switchRow {
+  display: flex;
+  gap: 12px;
   align-items: center;
+  justify-content: space-between;
+}
+
+.switchText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.switchTitle {
+  margin: 0;
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
 }
 
 .form {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 12px 16px 16px;
+  gap: 12px;
+}
+
+.formNotice {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-module-platform);
+  color: var(--dsw-alias-state-error-primary);
+}
+
+/* The fields on the nested editor module fill. */
+.formCard {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px;
+  border-radius: var(--dsw-radius-lg);
+  background: var(--dsw-alias-bg-module-platform);
 }
 
 .field {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* Label at the start; the Content field's Write / Preview switch at the end. */
+.fieldHead {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 18px;
+}
+
+.fieldLabel {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
 }
 
 .input {
+  box-sizing: border-box;
   width: 100%;
 }
 
+.input:has(input[aria-invalid='true']) {
+  border-color: var(--dsw-alias-state-error-primary);
+}
+
+/* Help and error share one line of reserved height, so an error never moves the fields below it. */
+.hint,
+.fieldError {
+  min-height: 18px;
+  margin: 0;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.hint {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.fieldError {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.modeSwitch {
+  flex: none;
+}
+
+.modeSwitch [role='tab'] {
+  height: 24px;
+  padding: 0 10px;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+/* Grows with its content between the two heights, then scrolls. */
 .textarea {
+  display: block;
   box-sizing: border-box;
   width: 100%;
-  min-height: 140px;
-  padding: 8px;
-  color: var(--dsw-alias-label-primary);
-  font: inherit;
-  background: var(--dsw-alias-bg-layer-1);
+  min-height: 200px;
+  max-height: 480px;
+  padding: 10px 12px;
   border: 0.5px solid var(--dsw-alias-border-l4);
-  border-radius: var(--dsw-radius-md);
+  border-radius: var(--dsw-radius-lg);
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  font-family: var(--ds-font-family-code);
+  font-size: 12px;
+  line-height: 20px;
+  tab-size: 2;
+  field-sizing: content;
   resize: vertical;
 }
 
@@ -134,28 +655,19 @@
   outline: none;
 }
 
-.kinds {
+.preview .document {
+  min-height: 200px;
+  max-height: 480px;
+  overflow: auto;
+  border-color: var(--dsw-alias-border-l4);
+  border-radius: var(--dsw-radius-lg);
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.formActions {
   display: flex;
-  gap: 4px;
-}
-
-.kind {
-  padding: 4px 10px;
-  color: inherit;
-  font: inherit;
-  background: transparent;
-  border: 0.5px solid var(--dsw-alias-border-l4);
-  border-radius: var(--dsw-radius-md);
-  cursor: pointer;
-}
-
-.kind[aria-pressed='true'] {
-  background: var(--dsw-alias-interactive-bg-hover);
-}
-
-.error {
-  margin: 0;
-  color: var(--dsw-alias-state-error-primary);
+  gap: 8px;
+  justify-content: flex-end;
 }
 
 .titleIcon {

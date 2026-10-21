@@ -3,7 +3,7 @@
 ## Làm theo 4 bước
 
 1. Trên Web, chọn project sẽ dùng skill. Mở một hội thoại mới. Chế độ là Standard, PTC hoặc Creator.
-2. Mở tab Rules and skills ở sidebar bên phải. Tạo skill: tên dạng kebab-case, một description, và nội dung markdown.
+2. Mở tab Skills ở sidebar bên phải. Tạo skill: tên dạng kebab-case, một description, và nội dung markdown.
 3. Bấm Use in chat. Ô nhập nhận `/field-list ` gồm dấu `/`, tên, và một khoảng trắng ở cuối.
 4. Gửi tin nhắn.
 
@@ -14,7 +14,7 @@ Xong khi câu trả lời nói về danh sách field. Chưa xong khi model hỏi
 ## Nếu gõ `/` mà không thấy tên
 
 - Đầu file có `name: field-list` và `description`.
-- Hội thoại đang mở đúng project. Tab Rules and skills liệt kê skill của project đó.
+- Hội thoại đang mở đúng project. Tab Skills liệt kê skill của project đó.
 - Skill tạo từ panel là một file phẳng `<name>.md` trong `.agents/skills`.
 
 Năm tên cần thấy: `field-list`, `default-envelope`, `vertex-schema-limits`, `plan-from-pdf`, `flatten-on-gemini-error`.
@@ -23,7 +23,7 @@ Năm tên cần thấy: `field-list`, `default-envelope`, `vertex-schema-limits`
 
 ## Dùng cho mọi project
 
-Mỗi project giữ `.agents/skills` của chính nó. Mở từng project và tạo skill trên tab Rules and skills của project đó. Skill chỉ đọc hiện nguồn và chỉ có Use in chat.
+Mỗi project giữ `.agents/skills` của chính nó. Mở từng project và tạo skill trên tab Skills của project đó. Skill chỉ đọc hiện nguồn và chỉ có Use in chat.
 
 ## Đầu file skill
 

@@ -479,6 +479,7 @@ describe('SkillRegistry registry', () => {
       source: 'runtime',
       resourceBase,
       metadata,
+      subagent: true,
       content: 'Runtime body.',
     }
     ctx.skills.register(registration)
@@ -491,6 +492,8 @@ describe('SkillRegistry registry', () => {
     const listed = await ctx.skills.list()
     const loaded = await ctx.skills.get('runtime-skill')
     expect(listed[0]?.resourceBase).toBe(resourceBase)
+    expect(listed[0]?.subagent).toBe(true)
+    expect(listed[1]).not.toHaveProperty('subagent')
     expect(listed[0]?.invocation).toBe(invocation)
     expect(loaded?.resourceBase).toBe(resourceBase)
     expect(loaded?.metadata).toBe(metadata)

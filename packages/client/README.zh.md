@@ -62,7 +62,7 @@ kind: "package-group"
 | [`ui-commands/`](ui-commands/README.zh.md) | 提供会话感知的命令发现与分发 | — |
 | [`ui-input-trigger/`](ui-input-trigger/README.zh.md) | 协调内联命令与引用建议 | — |
 | [`ui-skill/`](ui-skill/README.zh.md) | 向内联建议添加 skill（技能）引用 | — |
-| [`ui-skill-manager/`](ui-skill-manager/README.zh.md) | 在右侧栏列出并编辑当前项目的规则和技能 | — |
+| [`ui-skill-manager/`](ui-skill-manager/README.zh.md) | 在右侧栏列出、创建并编辑当前项目的技能 | — |
 | [`ui-reference/`](ui-reference/README.zh.md) | 统一的 Web `@file` / `@session` 引用 source | — |
 | [`ui-subagent/`](ui-subagent/README.zh.md) | 提供 subagent 导航、子级 transcript（文本记录）状态与内联引用 | — |
 | [`ui-jobs/`](ui-jobs/README.zh.md) | 列出本会话的后台任务，并提供按需展开的流式输出面板 | — |

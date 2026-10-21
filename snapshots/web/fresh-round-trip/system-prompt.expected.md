@@ -8,6 +8,8 @@ Check the [exit code: N] marker on every bash result; investigate failures befor
 
 Use the read tool — not shell commands like cat — to inspect text files. Use offset and limit to continue reading large files.
 
+Use read_document, not read, for .docx, .pdf, and .xlsx files. Use offset to continue reading a long document.
+
 Read an existing file before overwriting it with write (the default fs-observation-policy requires it) and prefer edit for targeted changes.
 
 Read a file before editing it (the default fs-observation-policy requires it), unless you just created or edited it in this session.

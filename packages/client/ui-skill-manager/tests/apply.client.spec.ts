@@ -1,5 +1,5 @@
 /**
- * The plugin's registrations, composer insert, and catalog refresh.
+ * The plugin's registrations, composer insert, catalog refresh, per-session views, and the overlay toast.
  */
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
@@ -10,24 +10,32 @@ import { apply, inject } from '../src/client/index.ts'
 import { apply as hostApply } from '../src/index.ts'
 import { en, zh } from '../src/client/locales.ts'
 import { SkillManagerBody } from '../src/client/Panel.tsx'
+import { SkillManagerToast } from '../src/client/SkillToast.tsx'
 import { SkillManagerTitle } from '../src/client/Title.tsx'
 
 interface Recorded {
   name: string
-  key: string
+  key?: string
+  id?: string
   locale?: string
   inject?: (sessionId: string) => {
     useInChat: (name: string) => void
     write: (draft: {
       name: string
       description: string
-      kind: 'rule' | 'skill'
       subagent: boolean
       body: string
-    }) => Promise<string | undefined>
-    remove: (name: string) => Promise<string | undefined>
+    }) => Promise<{ message: string; conflict: boolean } | undefined>
+    remove: (name: string, expectedVersion?: string) => Promise<{ message: string; conflict: boolean } | undefined>
     reload: () => void
-    hooks: { catalog: { getSnapshot: () => { status: string } } }
+    navigate: (view: { kind: 'list' } | { kind: 'create' }) => void
+    notify: (toast: { kind: 'saved'; name: string }) => void
+    dismiss: () => void
+    hooks: {
+      catalog: { getSnapshot: () => { status: string } }
+      view: { getSnapshot: () => { kind: string } }
+      toast: { getSnapshot: () => { kind: string; name: string } | null }
+    }
   }
   component: unknown
 }
@@ -59,9 +67,12 @@ async function boot() {
     }),
   }
   const list = vi.fn(async () => ({ ok: true as const, value: { skills: [] } }))
-  const remote = new TestRemote(ctx, { skills: { list } })
+  const write = vi.fn(async () => ({ ok: true as const, value: { path: '/p' } }))
+  const del = vi.fn(async () => ({ ok: true as const, value: { path: '/p' } }))
+  const remote = new TestRemote(ctx, { skills: { list, write, delete: del } })
+  const bound = new Set(['s1'])
   const sessions = {
-    binding: (sessionId: string) => sessionId === 's1' ? { ctx: sessionCtx } : undefined,
+    binding: (sessionId: string) => bound.has(sessionId) ? { ctx: sessionCtx } : undefined,
   }
   ctx.provide('sidebarRightTabs', tabs as never)
   ctx.provide('slots', slots as never)
@@ -69,7 +80,7 @@ async function boot() {
   ctx.provide('sessions', sessions as never)
   const fiber = ctx.plugin({ inject: [...inject], apply })
   await fiber.await()
-  return { tabs, registered, dictionaries, fiber, remote, list, texts }
+  return { tabs, registered, dictionaries, fiber, remote, list, write, del, texts, bound }
 }
 
 describe('ui-skill-manager apply', () => {
@@ -91,15 +102,16 @@ describe('ui-skill-manager apply', () => {
       expect(definition?.guide?.map(entry => [entry.order, entry.title(), entry.description?.()]))
         .toEqual([[15, 'guide.title', 'guide.description']])
       expect(dictionaries.get('skillManager')).toEqual({ zh, en })
-      expect(registered.map(entry => [entry.name, entry.key, entry.locale, entry.component])).toEqual([
+      expect(registered.map(entry => [entry.name, entry.key ?? entry.id, entry.locale, entry.component])).toEqual([
         ['sidebar.right.pane.tab', SKILLS_ID, 'skillManager', SkillManagerBody],
+        ['shell.overlay', 'skill-manager.toast', 'skillManager', SkillManagerToast],
         ['sidebar.right.pane.tab.title', SKILLS_ID, undefined, SkillManagerTitle],
       ])
     } finally { await fiber.dispose() }
   })
 
   it('appends /name to the session composer and refetches when skills/change fires', async () => {
-    const { registered, fiber, remote, list, texts } = await boot()
+    const { registered, fiber, remote, list, write, del, texts } = await boot()
     try {
       const face = registered[0]?.inject?.('s1')
       expect(face).toBeDefined()
@@ -111,10 +123,43 @@ describe('ui-skill-manager apply', () => {
       await vi.waitFor(() => { expect(list).toHaveBeenCalledTimes(2) })
       remote.emit('skills/change', [])
       await vi.waitFor(() => { expect(list).toHaveBeenCalledTimes(4) })
-      const draft = { name: 'field-list', description: 'List.', kind: 'skill' as const, subagent: false, body: '' }
-      expect(await face!.write(draft)).toBe('unavailable')
-      expect(await face!.remove('field-list')).toBe('unavailable')
+      const draft = { name: 'field-list', description: 'List.', subagent: false, body: '' }
+      expect(await face!.write(draft)).toBeUndefined()
+      expect(write).toHaveBeenCalledWith(expect.objectContaining({ sessionId: 's1', name: 'field-list' }))
+      expect(await face!.remove('field-list')).toBeUndefined()
+      expect(del).toHaveBeenCalledWith({ sessionId: 's1', name: 'field-list' })
       face!.reload()
+    } finally { await fiber.dispose() }
+  })
+
+  it('keeps a view per session and reports toasts through the overlay entry', async () => {
+    const { registered, fiber, list } = await boot()
+    try {
+      const body = registered.find(entry => entry.name === 'sidebar.right.pane.tab')!
+      const overlay = registered.find(entry => entry.name === 'shell.overlay')!
+      const face = body.inject!('s1')
+      await vi.waitFor(() => { expect(list).toHaveBeenCalledTimes(1) })
+      face.navigate({ kind: 'create' })
+      expect(body.inject!('s1').hooks.view.getSnapshot()).toEqual({ kind: 'create' })
+      expect(body.inject!('s2').hooks.view.getSnapshot()).toEqual({ kind: 'list' })
+      const toast = overlay.inject!('')
+      face.notify({ kind: 'saved', name: 'field-list' })
+      expect(toast.hooks.toast.getSnapshot()).toMatchObject({ kind: 'saved', name: 'field-list' })
+      toast.dismiss()
+      expect(toast.hooks.toast.getSnapshot()).toBeNull()
+    } finally { await fiber.dispose() }
+  })
+
+  it('forgets a session whose binding is gone the next time a catalog is requested', async () => {
+    const { registered, fiber, list, bound } = await boot()
+    try {
+      const first = registered[0]?.inject?.('s1')
+      await vi.waitFor(() => { expect(list).toHaveBeenCalledTimes(1) })
+      bound.delete('s1')
+      registered[0]?.inject?.('s2')
+      await vi.waitFor(() => { expect(list).toHaveBeenCalledTimes(2) })
+      const again = registered[0]?.inject?.('s1')
+      expect(again?.hooks.catalog).not.toBe(first?.hooks.catalog)
     } finally { await fiber.dispose() }
   })
 })

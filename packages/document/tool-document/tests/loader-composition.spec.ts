@@ -31,7 +31,7 @@ afterEach(async () => {
 function sourceLoader(modules: ReadonlyMap<string, unknown>): ModuleLoaderV2 {
   return {
     version: 'v2',
-    loadCache: Object.create(Map.prototype),
+    loadCache: Object.create(Map.prototype) as ModuleLoaderV2['loadCache'],
     import(specifier: string): Promise<unknown> {
       if (!modules.has(specifier)) return Promise.reject(new Error(`unexpected Loader import: ${specifier}`))
       return Promise.resolve(modules.get(specifier))

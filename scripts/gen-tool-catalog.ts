@@ -48,6 +48,9 @@ import CordisHostRunner from '@deepseek-ai/dsh-cordis-host-runner'
 import * as ToolCordis from '@deepseek-ai/dsh-tool-cordis'
 import * as ToolPresent from '@deepseek-ai/dsh-tool-present'
 import * as ToolFs from '@deepseek-ai/dsh-tool-fs'
+import * as ToolDocument from '@deepseek-ai/dsh-tool-document'
+import SandboxProvider from '@deepseek-ai/dsh-sandbox'
+import type { ConfinedArgv } from '@deepseek-ai/dsh-sandbox'
 import * as ToolFsSearch from '@deepseek-ai/dsh-tool-fs-search'
 import * as ToolStrReplaceEditor from '@deepseek-ai/dsh-tool-str-replace-editor'
 import TerminalSessionService from '@deepseek-ai/dsh-terminal'
@@ -100,6 +103,17 @@ class CatalogAttachmentStore extends AttachmentStore {
 
   override readImage(_ref: ImageAttachmentRef): Promise<StoredImageAttachment> {
     return Promise.reject(new Error('gen-tool-catalog: attachment reads are unreachable during schema harvest'))
+  }
+}
+
+/**
+ * Sandbox seam marker that lets sandbox-injecting tools mount without the real
+ * `sandbox-local` backend, whose load-time bwrap/Landlock probe would make the
+ * catalog depend on the host that generates it.
+ */
+class CatalogSandboxProvider extends SandboxProvider {
+  override confine(): Promise<ConfinedArgv> {
+    throw new Error('gen-tool-catalog: sandbox confinement is unreachable during schema harvest')
   }
 }
 
@@ -381,6 +395,25 @@ const TOOL_PACKAGES: ToolPackage[] = [
     },
     note:
       'The read-before-write/edit policy is added by `@deepseek-ai/dsh-fs-observation-policy` (an `fs/*` event-gate plugin, no schema change); a deployment that loads these tools is expected to also load it. The image tool is not registered without `ctx.attachments`; its schema is route-independent, and execution refuses unless the exact routed model declares image input.',
+  },
+  {
+    pkg: '@deepseek-ai/dsh-tool-document',
+    dir: 'tool-document',
+    source: 'packages/document/tool-document/src/index.ts',
+    requires: ['ctx.tools', 'ctx.fs', 'ctx.sandbox', 'ctx.subprocess', 'ctx.sandboxPolicy', 'ctx.systemPrompt'],
+    writes: ['tool/call', 'tool/result'],
+    async mount(ctx) {
+      // Registration never spawns or confines: the tool injects `sandbox` and
+      // `subprocess`, but only execution reaches them. The stub provider keeps
+      // the catalog independent of the host's bwrap/Landlock probe.
+      await ctx.plugin(LocalFileSystem)
+      await ctx.plugin(SandboxPolicy)
+      await ctx.plugin(LocalSubprocessRuntime)
+      await ctx.plugin(CatalogSandboxProvider)
+      await ctx.plugin(ToolDocument)
+    },
+    note:
+      'read_document extracts docx, pdf, and xlsx text and tables in a read-only confined child process and fails closed (SANDBOX_UNAVAILABLE) when no sandbox backend is usable. Extraction results are cached keyed by FsInfo.version.',
   },
   {
     pkg: '@deepseek-ai/dsh-tool-fs-search',

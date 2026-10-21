@@ -221,7 +221,6 @@ export class FileSystemSkillProvider implements SkillProvider {
       provider: this.name,
       resourceBase: { kind: 'directory', path: locator.directory },
       path: parsed.path,
-      kind: presentation.kind,
       subagent: presentation.subagent,
       ...parsed.metadata !== undefined ? { metadata: parsed.metadata } : {},
       content: parsed.content,
@@ -745,7 +744,6 @@ async function discoverRoot(root: SkillRoot, ctx: Context, provider: string): Pr
       locator,
       resourceBase: { kind: 'directory', path: locator.directory },
       path: parsed.path,
-      kind: presentation.kind,
       subagent: presentation.subagent,
       ...parsed.metadata !== undefined ? { metadata: parsed.metadata } : {},
     })
@@ -1040,11 +1038,9 @@ function frontmatterBoolean(data: Record<string, unknown>, key: string): boolean
 }
 
 function presentationFromMetadata(metadata: Record<string, unknown> | undefined): {
-  kind: 'rule' | 'skill'
   subagent: boolean
 } {
   return {
-    kind: metadata?.kind === 'rule' ? 'rule' : 'skill',
     subagent: metadata?.subagent === true,
   }
 }

@@ -1,15 +1,16 @@
 /** `read_document` registration, windows, and child lifecycle. */
-import { PassThrough, Readable } from 'node:stream'
+import { PassThrough, Readable, Writable } from 'node:stream'
 import { crc32 } from 'node:zlib'
 import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import { FsError } from '@deepseek-ai/dsh-fs'
+import { FsError, FsVersion } from '@deepseek-ai/dsh-fs'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import { SandboxUnavailableError } from '@deepseek-ai/dsh-sandbox'
+import { childEnv } from '@deepseek-ai/dsh-subprocess-local/src/spawn.ts'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import * as ToolDocument from '../src/index.ts'
-import type { ChildRequest } from '../src/child.ts'
+import type { ChildRequest } from '../src/extract.ts'
 
 const ROOT = 'D:\\document-tool-root'
 const OUTSIDE = 'D:\\outside\\attachments\\note.docx'
@@ -17,6 +18,7 @@ const OUTSIDE = 'D:\\outside\\attachments\\note.docx'
 interface StoredFile {
   bytes: Uint8Array
   type?: 'file' | 'directory'
+  version?: string
 }
 
 interface SpawnSpec {
@@ -94,12 +96,69 @@ function hangHandle(): HandleControl & {
   }
 }
 
+function manualHandle(): HandleControl & {
+  stdin: PassThrough
+  stdout: PassThrough
+  collected: { stderr?: undefined }
+  done: Promise<{ exitCode: number | null; signal: 'SIGTERM' | null }>
+  finish(payload: string): void
+  readonly terminated: boolean
+} {
+  let waited = false
+  let terminated = false
+  let settled = false
+  let settle = (_outcome: { exitCode: number | null; signal: 'SIGTERM' | null }): void => {}
+  const done = new Promise<{ exitCode: number | null; signal: 'SIGTERM' | null }>((resolve) => { settle = resolve })
+  const stdout = new PassThrough()
+  const end = (outcome: { exitCode: number | null; signal: 'SIGTERM' | null }): void => {
+    if (settled) return
+    settled = true
+    settle(outcome)
+  }
+  return {
+    stdin: new PassThrough(),
+    stdout,
+    collected: {},
+    done,
+    finish(payload) {
+      stdout.end(payload)
+      end({ exitCode: 0, signal: null })
+    },
+    terminate() {
+      if (!settled) terminated = true
+      stdout.end()
+      end({ exitCode: null, signal: 'SIGTERM' })
+    },
+    async waitForExit() {
+      await done
+      waited = true
+      return true
+    },
+    get waited() { return waited },
+    get terminated() { return terminated },
+  }
+}
+
+async function until(check: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 400 && !check(); attempt += 1) {
+    await new Promise((resolve) => { setTimeout(resolve, 5) })
+  }
+  expect(check()).toBe(true)
+}
+
+function result(payload: object): string {
+  return JSON.stringify(payload)
+}
+
 async function setup(options?: {
   files?: Map<string, StoredFile>
   config?: Record<string, number>
-  handles?: Array<ReturnType<typeof jsonHandle> | ReturnType<typeof hangHandle>>
+  handles?: Array<ReturnType<typeof jsonHandle> | ReturnType<typeof hangHandle> | ReturnType<typeof manualHandle>>
   confine?: (argv: readonly string[], policy: ConfinePolicy) => Promise<{ argv: string[] }>
   policy?: { mode: 'read-only' | 'workspace-write'; workspaceRoot: string; sessionId?: string }
+  onStat?: (path: string) => 'missing' | undefined
+  onRead?: (path: string) => Promise<void> | void
+  targetKey?: (displayPath: string) => string
 }) {
   const files = options?.files ?? new Map<string, StoredFile>()
   const spawns: SpawnSpec[] = []
@@ -116,15 +175,16 @@ async function setup(options?: {
       const displayPath = path.includes(':') || path.startsWith('/') || path.startsWith('\\')
         ? path
         : `${resolveOptions?.cwd ?? ROOT}\\${path}`
-      return { displayPath }
+      return { targetKey: options?.targetKey?.(displayPath) ?? `key:${displayPath}`, displayPath }
     },
     async stat(target: { displayPath: string }) {
       const file = files.get(target.displayPath)
-      if (file === undefined) return undefined
-      return { type: file.type ?? 'file' }
+      if (file === undefined || options?.onStat?.(target.displayPath) === 'missing') return undefined
+      return { type: file.type ?? 'file', version: FsVersion(file.version ?? 'v1'), size: file.bytes.byteLength }
     },
     async readBytes(target: { displayPath: string }, _signal: AbortSignal | undefined, maxBytes: number) {
       reads += 1
+      await options?.onRead?.(target.displayPath)
       const file = files.get(target.displayPath)
       if (file === undefined) throw new FsError('missing', 'FS_NOT_FOUND')
       if (file.bytes.byteLength > maxBytes) {
@@ -238,9 +298,11 @@ describe('registration', () => {
 })
 
 describe('read_document', () => {
-  it('returns a line window for an absolute docx path and scrubs the child env', async () => {
+  it('returns a line window for an absolute docx path and leaves the child env to the service scrub', async () => {
     const previous = process.env.DOCUMENT_PROBE_KEY
+    const previousDsh = process.env.DSH_DOCUMENT_PROBE
     process.env.DOCUMENT_PROBE_KEY = 'super-secret-value'
+    process.env.DSH_DOCUMENT_PROBE = 'harness-fact'
     process.env.PLAIN_VALUE = 'kept'
     try {
       const bytes = storedZip(['word/document.xml'])
@@ -269,9 +331,14 @@ describe('read_document', () => {
       expect(resolves[0]).toEqual({ path: OUTSIDE, cwd: 'D:\\sessions\\workspace' })
       expect(confines[0]).toMatchObject({ mode: 'read-only', workspaceRoot: ROOT, sessionId: 'sess-1' })
       expect(spawns[0]?.cwd).toBe(ROOT)
-      expect(spawns[0]?.env).not.toHaveProperty('DOCUMENT_PROBE_KEY')
-      expect(spawns[0]?.env?.PLAIN_VALUE).toBe('kept')
-      expect(JSON.stringify(spawns[0]?.env)).not.toContain('super-secret-value')
+      // No explicit env: an explicit entry would merge after the service scrub and re-add what it removed.
+      expect(spawns[0]?.env).toBeUndefined()
+      const childEnvironment = childEnv(spawns[0]?.env)
+      expect(childEnvironment).not.toHaveProperty('DOCUMENT_PROBE_KEY')
+      expect(childEnvironment).not.toHaveProperty('DSH_DOCUMENT_PROBE')
+      expect(childEnvironment.PLAIN_VALUE).toBe('kept')
+      expect(JSON.stringify(childEnvironment)).not.toContain('super-secret-value')
+      expect(JSON.stringify(childEnvironment)).not.toContain('harness-fact')
       const request = JSON.parse(spawns[0]?.argv.at(-1) ?? '') as ChildRequest
       expect(request.format).toBe('docx')
       expect(spawns[0]?.argv.join('\n')).not.toContain(OUTSIDE)
@@ -279,6 +346,8 @@ describe('read_document', () => {
     } finally {
       if (previous === undefined) delete process.env.DOCUMENT_PROBE_KEY
       else process.env.DOCUMENT_PROBE_KEY = previous
+      if (previousDsh === undefined) delete process.env.DSH_DOCUMENT_PROBE
+      else process.env.DSH_DOCUMENT_PROBE = previousDsh
       delete process.env.PLAIN_VALUE
     }
   })
@@ -339,20 +408,50 @@ describe('read_document', () => {
     const offset = await call(again.ctx, { file_path: 'D:\\sheet.xlsx', offset: 2, limit: 5 })
     expect(offset.isError).toBe(false)
     if (offset.isError) return
+    // Reading on with offset up to the last line has returned everything that remained.
     expect(offset.value).toMatchObject({
       offset: 2,
       lines: [{ number: 2, text: 'two' }],
       totalLines: 2,
-      truncated: true,
+      truncated: false,
     })
-    expect(text(offset)).toContain('not fully returned')
+    expect(text(offset)).toContain('2|two\n(End of document)')
+    expect(text(offset)).not.toContain('Extraction stopped early')
 
-    const third = jsonHandle(JSON.stringify({ text: 'hello' }), 0)
+    const third = jsonHandle(JSON.stringify({ text: 'hello\nnext' }), 0)
     const capped = await setup({ files, config: { maxBytes: 4 }, handles: [third] })
     const bytes = await call(capped.ctx, { file_path: 'D:\\sheet.xlsx' })
     expect(bytes.isError).toBe(false)
     if (bytes.isError) return
-    expect(bytes.value).toMatchObject({ lines: [], totalLines: 1, truncated: true })
+    // The marker does not fit in 4 bytes, so the first line is cut to the cap without it.
+    expect(bytes.value).toMatchObject({ lines: [{ number: 1, text: 'hell' }], totalLines: 2, truncated: true })
+    expect(text(bytes)).toContain('Showing lines 1-1 of 2. Use offset=2 to continue.')
+  })
+
+  it('always returns the first selected line, cut on a UTF-8 boundary, when it alone exceeds the byte cap', async () => {
+    const files = new Map([['D:\\wide.docx', { bytes: storedZip(['word/document.xml']) }]])
+    const read = async (raw: string, config: Record<string, number>, offset?: number) => {
+      const { ctx } = await setup({ files, config, handles: [jsonHandle(JSON.stringify({ text: raw }), 0)] })
+      const value = await call(ctx, { file_path: 'D:\\wide.docx', ...offset === undefined ? {} : { offset } })
+      expect(value.isError).toBe(false)
+      if (value.isError) throw new Error('unexpected error result')
+      return value
+    }
+    // 1 ASCII byte then two-byte characters: an 8-byte budget ends inside the fourth character.
+    const cut = await read(`skip\na${'é'.repeat(20)}\nnext`, { maxBytes: 40 }, 2)
+    expect(cut.value).toMatchObject({ offset: 2, lines: [{ number: 2, text: 'aééé... (line truncated to 40 bytes)' }], truncated: true })
+    expect(Buffer.byteLength('aééé... (line truncated to 40 bytes)')).toBeLessThanOrEqual(40)
+    expect(text(cut)).toContain('Showing lines 2-2 of 3. Use offset=3 to continue.')
+    // A later line that does not fit is left for the next call, not cut.
+    const later = await read('aa\nbbbbbbbb', { maxBytes: 5 })
+    expect(later.value).toMatchObject({ lines: [{ number: 1, text: 'aa' }], totalLines: 2, truncated: true })
+    expect(text(later)).toContain('Use offset=2 to continue.')
+    // A one-byte budget cannot hold a two-byte character, so only the marker remains.
+    const marker = await read('é'.repeat(20), { maxBytes: 33 })
+    expect(marker.value).toMatchObject({ lines: [{ number: 1, text: '... (line truncated to 33 bytes)' }], totalLines: 1 })
+    // The character cap applies first; when the marker cannot fit, the cut line is returned whole.
+    const short = await read('abcdef', { maxLineLength: 3, maxBytes: 10 })
+    expect(short.value).toMatchObject({ lines: [{ number: 1, text: 'abc' }], totalLines: 1, truncated: false })
   })
 
   it('rejects the wrong extension, a missing file, a directory, a past-the-end offset, and an over-cap file', async () => {
@@ -471,7 +570,8 @@ describe('read_document', () => {
     controller.abort(new Error('stop reading'))
     const result = await pending
     expect(text(result)).toContain('stop reading')
-    expect(handle.waited).toBe(true)
+    // The caller leaves at once; the shared extraction it was the last waiter on stops the child and awaits exit.
+    await until(() => handle.waited)
 
     const stringAbort = new AbortController()
     stringAbort.abort('stop')
@@ -502,6 +602,19 @@ describe('read_document', () => {
     const result = await call(ctx, { file_path: 'D:\\note.pdf' })
     expect(result.isError).toBe(true)
     expect(result.error?.info?.code).toBe('SANDBOX_UNAVAILABLE')
+    expect(text(result)).toContain('read_document cannot run because no sandbox is available on this host; do not retry')
+    expect(text(result)).not.toContain('bubblewrap')
+    expect(spawns).toHaveLength(0)
+  })
+
+  it('passes any other confinement failure through unchanged', async () => {
+    const { ctx, spawns } = await setup({
+      files: new Map([['D:\\note.pdf', { bytes: Buffer.from('%PDF') }]]),
+      confine: () => Promise.reject(new Error('policy store offline')),
+    })
+    const result = await call(ctx, { file_path: 'D:\\note.pdf' })
+    expect(text(result)).toContain('policy store offline')
+    expect(text(result)).not.toContain('no sandbox')
     expect(spawns).toHaveLength(0)
   })
 
@@ -552,5 +665,442 @@ describe('read_document', () => {
     expect(text(await call(ctx, { file_path: 'D:\\note.pdf' }))).toContain('without pipes')
     expect(text(await call(ctx, { file_path: 'D:\\note.pdf' }))).toContain('stdin broken')
     expect(text(await call(ctx, { file_path: 'D:\\note.pdf' }))).toContain('byte cap')
+  })
+
+  it('reports stdin and stdout failures and a failed child without a stderr tail', async () => {
+    const files = new Map([['D:\\note.pdf', { bytes: Buffer.from('%PDF') }]])
+    const writeFails = jsonHandle('{"text":"x"}', 0)
+    Object.assign(writeFails, {
+      stdin: new Writable({ write(_chunk, _encoding, callback) { callback(new Error('EPIPE child gone')) } }),
+    })
+    const stringFailure = jsonHandle('', 0)
+    Object.assign(stringFailure, {
+      stdout: new Readable({ read() { this.destroy('stdout gone' as unknown as Error) } }),
+    })
+    const closesStdin = jsonHandle('', 0)
+    Object.assign(closesStdin, {
+      stdout: new Readable({ read() { this.destroy(new Error('stdout read failed')) } }),
+      terminate() { closesStdin.stdin.destroy(new Error('stdin closed by stop')) },
+    })
+    closesStdin.stdin.on('error', () => {
+      // Observed through stdin.errored before this event is emitted.
+    })
+    const silent = jsonHandle('', 1)
+    Object.assign(silent, { collected: {} })
+    const { ctx } = await setup({ files, handles: [writeFails, stringFailure, closesStdin, silent] })
+    expect(text(await call(ctx, { file_path: 'D:\\note.pdf' }))).toContain('EPIPE child gone')
+    expect(text(await call(ctx, { file_path: 'D:\\note.pdf' }))).toContain('stdout gone')
+    expect(text(await call(ctx, { file_path: 'D:\\note.pdf' }))).toContain('stdin closed by stop')
+    expect(text(await call(ctx, { file_path: 'D:\\note.pdf' }))).toContain('exit code 1')
+  })
+
+  it('drops one trailing newline and reads newline-only text as empty', async () => {
+    const files = new Map([['D:\\a.pdf', { bytes: Buffer.from('%PDF') }], ['D:\\b.pdf', { bytes: Buffer.from('%PDF!') }]])
+    const { ctx } = await setup({
+      files,
+      handles: [jsonHandle(result({ text: 'x\r\n' }), 0), jsonHandle(result({ text: '\r' }), 0)],
+    })
+    const trailing = await call(ctx, { file_path: 'D:\\a.pdf' })
+    const blank = await call(ctx, { file_path: 'D:\\b.pdf' })
+    expect(trailing.isError || blank.isError).toBe(false)
+    if (trailing.isError || blank.isError) return
+    expect(trailing.value).toMatchObject({ lines: [{ number: 1, text: 'x' }], totalLines: 1, truncated: false })
+    expect(blank.value).toMatchObject({ lines: [], totalLines: 0, truncated: false })
+  })
+})
+
+describe('prompt guidance', () => {
+  it('adds read_document guidance only while the tool is visible and removes it on dispose', async () => {
+    const { ctx, fiber } = await setup()
+    const section = async () => (await ctx.systemPrompt.assemble()).sections.find(entry => entry.name === 'tool:read_document')
+    expect((await section())?.text).toBe('Use read_document, not read, for .docx, .pdf, and .xlsx files. Use offset to continue reading a long document.')
+    const original = ctx.tools.get.bind(ctx.tools)
+    ctx.tools.get = (name, scope) => name === 'read_document' ? undefined : original(name, scope)
+    try {
+      expect((await section())?.text).toBe('')
+    } finally {
+      ctx.tools.get = original
+    }
+    await fiber.dispose()
+    expect(await section()).toBeUndefined()
+  })
+})
+
+describe('cap notices', () => {
+  const PDF = new Map([['D:\\scan.pdf', { bytes: Buffer.from('%PDF') }]])
+
+  it('appends the page cap to the no-text notice and marks the result truncated', async () => {
+    const handle = jsonHandle(result({ text: '', notice: 'This PDF has no text layer.', capped: ['pages'], pageCount: 212 }), 0)
+    const { ctx } = await setup({ files: PDF, handles: [handle] })
+    const read = await call(ctx, { file_path: 'D:\\scan.pdf' })
+    expect(read.isError).toBe(false)
+    if (read.isError) return
+    expect(read.value).toMatchObject({
+      lines: [],
+      truncated: true,
+      notice: 'This PDF has no text layer. Extraction stopped at maxPages (50 of 212 pages).',
+    })
+    expect(text(read)).not.toContain('(End of document)')
+    expect(text(read)).not.toContain('line 0')
+    expect(text(read)).toContain('Extraction stopped at maxPages (50 of 212 pages).\n(Extraction stopped early and returned no text. See the notice above.)')
+  })
+
+  it('reports sheet, row, and character caps in one notice with their numbers', async () => {
+    const handle = jsonHandle(result({ text: 'a\nb', capped: ['sheets', 'rows', 'chars'], sheetCount: 40, rowsSheet: 'Data' }), 0)
+    const { ctx } = await setup({ files: PDF, handles: [handle] })
+    const read = await call(ctx, { file_path: 'D:\\scan.pdf' })
+    expect(read.isError).toBe(false)
+    if (read.isError) return
+    expect(read.value).toMatchObject({
+      lines: [{ number: 1, text: 'a' }, { number: 2, text: 'b' }],
+      totalLines: 2,
+      truncated: true,
+      notice: [
+        'Extraction stopped at maxSheets (32 of 40 sheets).',
+        'Extraction stopped at maxRowsPerSheet (5000 rows per sheet, first in sheet "Data").',
+        'Extraction stopped at maxExtractedChars (1000000 characters).',
+      ].join(' '),
+    })
+    expect(text(read)).toContain('2|b\n(End of extracted text at line 2. Extraction stopped early, so the document continues past it. See the notice above.)')
+    expect(text(read)).not.toContain('offset=')
+  })
+
+  it('omits counts the child did not report', async () => {
+    const handle = jsonHandle(result({ text: 'x', capped: ['pages', 'sheets', 'rows'] }), 0)
+    const { ctx } = await setup({ files: PDF, config: { maxPages: 3, maxSheets: 2, maxRowsPerSheet: 7 }, handles: [handle] })
+    const read = await call(ctx, { file_path: 'D:\\scan.pdf' })
+    expect(read.isError).toBe(false)
+    if (read.isError) return
+    expect(read.value).toMatchObject({ notice: [
+      'Extraction stopped at maxPages (3 pages).',
+      'Extraction stopped at maxSheets (2 sheets).',
+      'Extraction stopped at maxRowsPerSheet (7 rows per sheet).',
+    ].join(' ') })
+  })
+
+  it('rejects a child result with an unknown cap', async () => {
+    const handle = jsonHandle(result({ text: 'x', capped: ['lines'] }), 0)
+    const { ctx } = await setup({ files: PDF, handles: [handle] })
+    expect(text(await call(ctx, { file_path: 'D:\\scan.pdf' }))).toContain('unexpected result')
+  })
+})
+
+describe('child limits', () => {
+  it('caps the child heap, uses a fixed grace period, and reports an out-of-memory child', async () => {
+    const files = new Map([['D:\\big.pdf', { bytes: Buffer.from('%PDF') }]])
+    const oom = jsonHandle('', 134, '<--- Last few GCs --->\nFATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory\n 1: 0x1 node::Abort()')
+    const { ctx, spawns } = await setup({ files, handles: [oom] })
+    const read = await call(ctx, { file_path: 'D:\\big.pdf' })
+    expect(read.isError).toBe(true)
+    expect(text(read)).toContain('read_document ran out of memory; the file is too large to extract')
+    expect(text(read)).not.toContain('FATAL')
+    expect(text(read)).not.toContain('node::Abort')
+    expect(spawns[0]?.argv).toContain('--max-old-space-size=1024')
+    expect(spawns[0]?.graceMs).toBe(2000)
+
+    const small = await setup({ files, config: { maxHeapMb: 256, timeoutMs: 60_000 }, handles: [jsonHandle(result({ text: 'ok' }), 0)] })
+    expect((await call(small.ctx, { file_path: 'D:\\big.pdf' })).isError).toBe(false)
+    expect(small.spawns[0]?.argv).toContain('--max-old-space-size=256')
+    expect(small.spawns[0]?.graceMs).toBe(2000)
+  })
+
+  it('rejects non-positive queue and heap caps at load', async () => {
+    await expect(setup({ config: { maxConcurrent: 0 } })).rejects.toThrow('maxConcurrent must be a positive integer')
+    await expect(setup({ config: { maxQueued: 0 } })).rejects.toThrow('maxQueued must be a positive integer')
+    await expect(setup({ config: { maxHeapMb: 0.5 } })).rejects.toThrow('maxHeapMb must be a positive integer')
+  })
+})
+
+describe('extraction cache', () => {
+  function docs(): Map<string, StoredFile> {
+    return new Map([[`${ROOT}\\report.docx`, { bytes: storedZip(['word/document.xml']) }]])
+  }
+
+  it('answers a repeat and an offset call from the cache without reading bytes or spawning', async () => {
+    const { ctx, spawns, reads } = await setup({ files: docs(), handles: [jsonHandle(result({ text: 'one\ntwo\nthree' }), 0)] })
+    const first = await call(ctx, { file_path: 'report.docx', limit: 1 })
+    expect(first.isError).toBe(false)
+    const next = await call(ctx, { file_path: `${ROOT}\\report.docx`, offset: 2 })
+    expect(next.isError).toBe(false)
+    if (next.isError) return
+    expect(next.value).toMatchObject({ lines: [{ number: 2, text: 'two' }, { number: 3, text: 'three' }], truncated: false })
+    expect(spawns).toHaveLength(1)
+    expect(reads()).toBe(1)
+  })
+
+  it('keys the cache by the target key, not the display path', async () => {
+    const bytes = storedZip(['word/document.xml'])
+    const files = new Map([
+      ['D:\\a\\report.docx', { bytes }],
+      ['D:\\b\\report.docx', { bytes }],
+    ])
+    let generation = 0
+    const { ctx, spawns } = await setup({
+      files,
+      targetKey: displayPath => displayPath.startsWith('D:\\c\\') ? `other:${generation}` : 'one-file',
+      handles: [
+        jsonHandle(result({ text: 'shared' }), 0),
+        jsonHandle(result({ text: 'before' }), 0),
+        jsonHandle(result({ text: 'after' }), 0),
+      ],
+    })
+    // Two display paths with one target key share one extraction.
+    expect((await call(ctx, { file_path: 'D:\\a\\report.docx' })).isError).toBe(false)
+    const alias = await call(ctx, { file_path: 'D:\\b\\report.docx' })
+    expect(alias.isError).toBe(false)
+    if (alias.isError) return
+    expect(alias.value).toMatchObject({ path: 'D:\\b\\report.docx', lines: [{ number: 1, text: 'shared' }] })
+    expect(spawns).toHaveLength(1)
+    // One display path whose target key changes is a different file.
+    files.set('D:\\c\\report.docx', { bytes })
+    expect((await call(ctx, { file_path: 'D:\\c\\report.docx' })).isError).toBe(false)
+    generation = 1
+    const changed = await call(ctx, { file_path: 'D:\\c\\report.docx' })
+    expect(changed.isError).toBe(false)
+    if (changed.isError) return
+    expect(changed.value).toMatchObject({ lines: [{ number: 1, text: 'after' }] })
+    expect(spawns).toHaveLength(3)
+  })
+
+  it('returns the same notice and cap on a hit', async () => {
+    const files = new Map([['D:\\scan.pdf', { bytes: Buffer.from('%PDF') }]])
+    const handle = jsonHandle(result({ text: 'p', capped: ['pages'], pageCount: 60 }), 0)
+    const { ctx, spawns } = await setup({ files, handles: [handle] })
+    const first = await call(ctx, { file_path: 'D:\\scan.pdf' })
+    const second = await call(ctx, { file_path: 'D:\\scan.pdf' })
+    expect(first.isError || second.isError).toBe(false)
+    if (first.isError || second.isError) return
+    expect(second.value).toEqual(first.value)
+    expect(second.value).toMatchObject({ truncated: true, notice: 'Extraction stopped at maxPages (50 of 60 pages).' })
+    expect(spawns).toHaveLength(1)
+  })
+
+  it('extracts again when the file version changes', async () => {
+    const files = docs()
+    const { ctx, spawns } = await setup({
+      files,
+      handles: [jsonHandle(result({ text: 'old' }), 0), jsonHandle(result({ text: 'new' }), 0)],
+    })
+    await call(ctx, { file_path: 'report.docx' })
+    const stored = files.get(`${ROOT}\\report.docx`)
+    if (stored !== undefined) stored.version = 'v2'
+    const read = await call(ctx, { file_path: 'report.docx' })
+    expect(read.isError).toBe(false)
+    if (read.isError) return
+    expect(read.value).toMatchObject({ lines: [{ number: 1, text: 'new' }] })
+    expect(spawns).toHaveLength(2)
+  })
+
+  it('returns but does not keep a result when the version changes between the two stats', async () => {
+    const files = docs()
+    const path = `${ROOT}\\report.docx`
+    const { ctx, spawns } = await setup({
+      files,
+      onRead: () => {
+        const stored = files.get(path)
+        if (stored !== undefined) stored.version = 'v2'
+      },
+      handles: [jsonHandle(result({ text: 'racy' }), 0), jsonHandle(result({ text: 'fresh' }), 0)],
+    })
+    const first = await call(ctx, { file_path: 'report.docx' })
+    expect(first.isError).toBe(false)
+    if (first.isError) return
+    expect(first.value).toMatchObject({ lines: [{ number: 1, text: 'racy' }] })
+    const stored = files.get(path)
+    if (stored !== undefined) stored.version = 'v1'
+    const second = await call(ctx, { file_path: 'report.docx' })
+    expect(second.isError).toBe(false)
+    if (second.isError) return
+    expect(second.value).toMatchObject({ lines: [{ number: 1, text: 'fresh' }] })
+    expect(spawns).toHaveLength(2)
+  })
+
+  it('does not keep a result when the second stat fails', async () => {
+    let stats = 0
+    const { ctx, spawns } = await setup({
+      files: docs(),
+      onStat: () => {
+        stats += 1
+        if (stats === 2) throw new FsError('stat failed', 'FS_PERMISSION_DENIED')
+        return undefined
+      },
+      handles: [jsonHandle(result({ text: 'a' }), 0), jsonHandle(result({ text: 'b' }), 0)],
+    })
+    expect((await call(ctx, { file_path: 'report.docx' })).isError).toBe(false)
+    expect((await call(ctx, { file_path: 'report.docx' })).isError).toBe(false)
+    expect(spawns).toHaveLength(2)
+  })
+
+  it('fails a session that cannot stat the path without touching the cache', async () => {
+    let hidden = false
+    const { ctx, spawns, reads } = await setup({
+      files: docs(),
+      onStat: () => hidden ? 'missing' : undefined,
+      handles: [jsonHandle(result({ text: 'secret' }), 0)],
+    })
+    expect((await call(ctx, { file_path: `${ROOT}\\report.docx` })).isError).toBe(false)
+    hidden = true
+    const denied = await call(ctx, { file_path: `${ROOT}\\report.docx` }, undefined, {
+      session: { header: { cwd: 'D:\\other-session' } },
+    })
+    expect(denied.isError).toBe(true)
+    expect(denied.error?.info?.code).toBe('FS_NOT_FOUND')
+    expect(text(denied)).not.toContain('secret')
+    expect(spawns).toHaveLength(1)
+    expect(reads()).toBe(1)
+  })
+
+  it('shares one child between two calls for the same file', async () => {
+    const handle = manualHandle()
+    const { ctx, spawns, reads } = await setup({ files: docs(), handles: [handle] })
+    const a = call(ctx, { file_path: 'report.docx' })
+    const b = call(ctx, { file_path: 'report.docx', offset: 2 })
+    await until(() => spawns.length === 1)
+    handle.finish(result({ text: 'x\ny' }))
+    const [first, second] = await Promise.all([a, b])
+    expect(first.isError || second.isError).toBe(false)
+    if (first.isError || second.isError) return
+    expect(first.value).toMatchObject({ lines: [{ number: 1, text: 'x' }, { number: 2, text: 'y' }] })
+    expect(second.value).toMatchObject({ lines: [{ number: 2, text: 'y' }] })
+    expect(spawns).toHaveLength(1)
+    expect(reads()).toBe(1)
+  })
+
+  it('keeps the shared child for the second caller when the first aborts', async () => {
+    const handle = manualHandle()
+    const { ctx, spawns } = await setup({ files: docs(), handles: [handle] })
+    const first = new AbortController()
+    const a = call(ctx, { file_path: 'report.docx' }, first.signal)
+    const b = call(ctx, { file_path: 'report.docx' })
+    await until(() => spawns.length === 1)
+    first.abort(new Error('first caller left'))
+    expect(text(await a)).toContain('first caller left')
+    expect(handle.terminated).toBe(false)
+    handle.finish(result({ text: 'kept' }))
+    const second = await b
+    expect(second.isError).toBe(false)
+    if (second.isError) return
+    expect(second.value).toMatchObject({ lines: [{ number: 1, text: 'kept' }] })
+  })
+
+  it('stops the shared child when every caller aborts', async () => {
+    const handle = hangHandle()
+    const { ctx, spawns } = await setup({ files: docs(), handles: [handle, jsonHandle(result({ text: 'later' }), 0)] })
+    const first = new AbortController()
+    const second = new AbortController()
+    const a = call(ctx, { file_path: 'report.docx' }, first.signal)
+    const b = call(ctx, { file_path: 'report.docx' }, second.signal)
+    await until(() => spawns.length === 1)
+    first.abort(new Error('one'))
+    second.abort(new Error('two'))
+    expect(text(await a)).toContain('one')
+    expect(text(await b)).toContain('two')
+    await until(() => handle.waited)
+    const later = await call(ctx, { file_path: 'report.docx' })
+    expect(later.isError).toBe(false)
+    expect(spawns).toHaveLength(2)
+  })
+})
+
+describe('child slots', () => {
+  function files(...names: string[]): Map<string, StoredFile> {
+    return new Map(names.map(name => [`D:\\${name}.pdf`, { bytes: Buffer.from('%PDF') }]))
+  }
+
+  it('runs at most maxConcurrent children and starts the next when one exits', async () => {
+    const handles = [manualHandle(), manualHandle(), manualHandle()]
+    const { ctx, spawns } = await setup({ files: files('a', 'b', 'c'), handles })
+    const reads = ['a', 'b', 'c'].map(name => call(ctx, { file_path: `D:\\${name}.pdf` }))
+    await until(() => spawns.length === 2)
+    await new Promise((resolve) => { setTimeout(resolve, 30) })
+    expect(spawns).toHaveLength(2)
+    handles[0]?.finish(result({ text: 'first' }))
+    await until(() => spawns.length === 3)
+    handles[1]?.finish(result({ text: 'second' }))
+    handles[2]?.finish(result({ text: 'third' }))
+    const results = await Promise.all(reads)
+    expect(results.map(entry => entry.isError)).toEqual([false, false, false])
+  })
+
+  it('fails at once as busy when the queue is full', async () => {
+    const running = manualHandle()
+    const { ctx, spawns } = await setup({
+      files: files('a', 'b', 'c'),
+      config: { maxConcurrent: 1, maxQueued: 1 },
+      handles: [running, jsonHandle(result({ text: 'b' }), 0)],
+    })
+    const a = call(ctx, { file_path: 'D:\\a.pdf' })
+    await until(() => spawns.length === 1)
+    const b = call(ctx, { file_path: 'D:\\b.pdf' })
+    await new Promise((resolve) => { setTimeout(resolve, 10) })
+    const c = await call(ctx, { file_path: 'D:\\c.pdf' })
+    expect(c.isError).toBe(true)
+    expect(text(c)).toContain('read_document is busy; retry after the running reads finish')
+    running.finish(result({ text: 'a' }))
+    expect((await a).isError).toBe(false)
+    expect((await b).isError).toBe(false)
+  })
+
+  it('does not count time spent waiting for a slot against the timeout', async () => {
+    const gate = Promise.withResolvers<undefined>()
+    const { ctx } = await setup({
+      files: files('a', 'b'),
+      config: { maxConcurrent: 1, timeoutMs: 40 },
+      onRead: path => path === 'D:\\a.pdf' ? gate.promise.then(() => {}) : undefined,
+      handles: [jsonHandle(result({ text: 'a' }), 0), jsonHandle(result({ text: 'b' }), 0)],
+    })
+    const a = call(ctx, { file_path: 'D:\\a.pdf' })
+    const b = call(ctx, { file_path: 'D:\\b.pdf' })
+    await new Promise((resolve) => { setTimeout(resolve, 120) })
+    gate.resolve(undefined)
+    const [first, second] = await Promise.all([a, b])
+    expect(first.isError).toBe(false)
+    expect(second.isError).toBe(false)
+    expect(text(second)).not.toContain('timed out')
+  })
+
+  it('removes a caller that aborts while queued', async () => {
+    const running = manualHandle()
+    const { ctx, spawns } = await setup({
+      files: files('a', 'b', 'c'),
+      config: { maxConcurrent: 1, maxQueued: 1 },
+      handles: [running, jsonHandle(result({ text: 'c' }), 0)],
+    })
+    const a = call(ctx, { file_path: 'D:\\a.pdf' })
+    await until(() => spawns.length === 1)
+    const leaving = new AbortController()
+    const b = call(ctx, { file_path: 'D:\\b.pdf' }, leaving.signal)
+    await new Promise((resolve) => { setTimeout(resolve, 10) })
+    leaving.abort(new Error('gave up waiting'))
+    expect(text(await b)).toContain('gave up waiting')
+    const c = call(ctx, { file_path: 'D:\\c.pdf' })
+    await new Promise((resolve) => { setTimeout(resolve, 10) })
+    running.finish(result({ text: 'a' }))
+    expect((await a).isError).toBe(false)
+    const third = await c
+    expect(third.isError).toBe(false)
+    if (third.isError) return
+    expect(third.value).toMatchObject({ lines: [{ number: 1, text: 'c' }] })
+    expect(spawns).toHaveLength(2)
+  })
+
+  it('rejects queued calls and stops running children on dispose', async () => {
+    const running = hangHandle()
+    const { ctx, fiber, spawns } = await setup({
+      files: files('a', 'b'),
+      config: { maxConcurrent: 1 },
+      handles: [running],
+    })
+    const a = call(ctx, { file_path: 'D:\\a.pdf' })
+    await until(() => spawns.length === 1)
+    const b = call(ctx, { file_path: 'D:\\b.pdf' })
+    await new Promise((resolve) => { setTimeout(resolve, 10) })
+    await fiber.dispose()
+    expect(running.waited).toBe(true)
+    const queued = await b
+    expect(queued.isError).toBe(true)
+    expect(text(queued)).toContain('read_document stopped because the plugin is shutting down')
+    expect((await a).isError).toBe(true)
+    expect(spawns).toHaveLength(1)
   })
 })

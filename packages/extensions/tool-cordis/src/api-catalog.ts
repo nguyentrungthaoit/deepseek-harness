@@ -2444,22 +2444,22 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         signature: '@Remote async list(request: SkillListRequest, signal: AbortSignal): Promise<SkillListValue>',
         description: 'List the user-invocable skills visible to one Session composition.',
         parameters: [{ name: 'request', description: 'Session identity whose cwd and preset select the catalog view.' }, { name: 'signal', description: 'caller lifetime carried by the Remote transport; admitted catalog reads retain their existing completion semantics.' }],
-        returns: 'user-invocable skill metadata. Writable rows also include the markdown body when it can be read.',
+        returns: 'user-invocable skill metadata. Writable rows also include the file version and markdown body when each can be read.',
         throws: ['RemoteError when the Session cannot be inspected or no registry can serve it.'],
       },
       {
         signature: '@Remote async write(request: SkillWriteRequest, signal: AbortSignal): Promise<SkillFileValue>',
-        description: 'Create or replace one flat project skill file inside the Session workspace.',
-        parameters: [{ name: 'request', description: 'file name, frontmatter fields, markdown body, and optional previous name.' }, { name: 'signal', description: 'caller lifetime; aborts before a filesystem mutation when already cancelled.' }],
+        description: 'Create or replace one flat project skill file inside the Session workspace. An existing file (same name, or the `replaces` source) keeps every frontmatter key, key order, and comment except `name`, `description`, and `metadata.subagent`, and keeps its body when `request.body` is omitted.',
+        parameters: [{ name: 'request', description: 'file name, frontmatter fields, optional markdown body, optional previous name, and optional expected version.' }, { name: 'signal', description: 'caller lifetime; aborts before a filesystem mutation when already cancelled.' }],
         returns: 'the flat file path that was written.',
-        throws: ['RemoteError when the name, path, owning skill, or filesystem rejects the write.'],
+        throws: ['RemoteError `skills/conflict` when the file changed since `expectedVersion` or during the write; `gateway/bad-request` when the name, path, owning skill, or existing frontmatter rejects the write; other codes when the filesystem fails.'],
       },
       {
         signature: '@Remote async delete(request: SkillDeleteRequest, signal: AbortSignal): Promise<SkillFileValue>',
         description: 'Delete the winning flat project skill file inside the Session workspace.',
-        parameters: [{ name: 'request', description: 'Session identity and kebab-case skill name.' }, { name: 'signal', description: 'caller lifetime; aborts before deletion when already cancelled.' }],
+        parameters: [{ name: 'request', description: 'Session identity, kebab-case skill name, and optional expected version.' }, { name: 'signal', description: 'caller lifetime; aborts before deletion when already cancelled.' }],
         returns: 'the flat file path that was deleted.',
-        throws: ['RemoteError when the name is not a writable flat file, or the host cannot unlink it.'],
+        throws: ['RemoteError `skills/conflict` when the file changed since `expectedVersion`; other codes when the name is not a writable flat file or the host cannot unlink it.'],
       },
     ],
   },
@@ -7237,15 +7237,19 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SkillDeleteRequest',
-    declaration: 'export interface SkillDeleteRequest {\n    readonly sessionId: SessionId;\n    readonly name: string;\n}',
+    declaration: 'export interface SkillDeleteRequest {\n    readonly sessionId: SessionId;\n    readonly name: string;\n    readonly expectedVersion?: SkillFileVersion;\n}',
   },
   {
     name: 'SkillEntry',
-    declaration: 'export interface SkillEntry {\n    readonly path?: string;\n    readonly name: string;\n    readonly description: string;\n    readonly whenToUse?: string;\n    readonly modelInvocable: boolean;\n    readonly kind: \'rule\' | \'skill\';\n    readonly subagent: boolean;\n    readonly source: string;\n    readonly writable: boolean;\n    readonly body?: string;\n}',
+    declaration: 'export interface SkillEntry {\n    readonly path?: string;\n    readonly name: string;\n    readonly description: string;\n    readonly whenToUse?: string;\n    readonly modelInvocable: boolean;\n    readonly subagent: boolean;\n    readonly source: string;\n    readonly writable: boolean;\n    readonly body?: string;\n    readonly version?: SkillFileVersion;\n}',
   },
   {
     name: 'SkillFileValue',
     declaration: 'export interface SkillFileValue {\n    readonly path: string;\n}',
+  },
+  {
+    name: 'SkillFileVersion',
+    declaration: 'export type SkillFileVersion = Branded<\'FsVersion\'>;',
   },
   {
     name: 'SkillInvocationPolicy',
@@ -7289,7 +7293,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SkillSummary',
-    declaration: 'export interface SkillSummary {\n    readonly path?: string;\n    readonly name: string;\n    readonly description: string;\n    readonly whenToUse?: string;\n    readonly invocation: SkillInvocationPolicy;\n    readonly source: SkillSource;\n    readonly provider: string;\n    readonly resourceBase?: SkillResourceBase;\n    readonly kind?: \'rule\' | \'skill\';\n    readonly subagent?: boolean;\n}',
+    declaration: 'export interface SkillSummary {\n    readonly path?: string;\n    readonly name: string;\n    readonly description: string;\n    readonly whenToUse?: string;\n    readonly invocation: SkillInvocationPolicy;\n    readonly source: SkillSource;\n    readonly provider: string;\n    readonly resourceBase?: SkillResourceBase;\n    readonly subagent?: boolean;\n}',
   },
   {
     name: 'SkillViewOptions',
@@ -7297,7 +7301,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SkillWriteRequest',
-    declaration: 'export interface SkillWriteRequest {\n    readonly sessionId: SessionId;\n    readonly name: string;\n    readonly description: string;\n    readonly kind: \'rule\' | \'skill\';\n    readonly subagent: boolean;\n    readonly body: string;\n    readonly replaces?: string;\n}',
+    declaration: 'export interface SkillWriteRequest {\n    readonly sessionId: SessionId;\n    readonly name: string;\n    readonly description: string;\n    readonly subagent: boolean;\n    readonly body?: string;\n    readonly replaces?: string;\n    readonly expectedVersion?: SkillFileVersion;\n}',
   },
   {
     name: 'SpawnTeammateRequest',

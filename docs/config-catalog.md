@@ -2845,7 +2845,7 @@ export interface Config {
 
 ## `@deepseek-ai/dsh-skill`
 
-- `source`: [`packages/skill/skill/src/index.ts:282`](../packages/skill/skill/src/index.ts)
+- `source`: [`packages/skill/skill/src/index.ts:280`](../packages/skill/skill/src/index.ts)
 
 ```ts config-catalog
 /** Skill registry configuration. */
@@ -3326,7 +3326,7 @@ export interface Config {
 
 ## `@deepseek-ai/dsh-system-prompt`
 
-- `source`: [`packages/core/system-prompt/src/index.ts:247`](../packages/core/system-prompt/src/index.ts)
+- `source`: [`packages/core/system-prompt/src/index.ts:248`](../packages/core/system-prompt/src/index.ts)
 
 ```ts config-catalog
 /** Plugin config: the deployment-authored fragment of the system prompt (see {@link Config.personaPrefix} for its contract). */
@@ -3542,8 +3542,8 @@ export interface Config {
 
 ## `@deepseek-ai/dsh-tool-document`
 
-- `inject`: `tools` · `fs` · `sandbox` · `subprocess` · `sandboxPolicy`
-- `source`: [`packages/document/tool-document/src/index.ts:65`](../packages/document/tool-document/src/index.ts)
+- `inject`: `tools` · `fs` · `sandbox` · `subprocess` · `sandboxPolicy` · `systemPrompt`
+- `source`: [`packages/document/tool-document/src/index.ts:90`](../packages/document/tool-document/src/index.ts)
 
 ```ts config-catalog
 /** Plugin config. Every field is optional; {@link Config} supplies the defaults. */
@@ -3558,7 +3558,7 @@ export interface Config {
   maxPages?: number
   /** Maximum characters the child may return. */
   maxExtractedChars?: number
-  /** Child deadline in milliseconds. */
+  /** Child deadline in milliseconds, counted from spawn. Time spent waiting for a slot does not count. */
   timeoutMs?: number
   /** Default and maximum lines returned by one call. */
   limit?: number
@@ -3568,8 +3568,14 @@ export interface Config {
   maxBytes?: number
   /** Maximum Excel sheets the child may read. */
   maxSheets?: number
-  /** Maximum data rows the child may read from one sheet. */
+  /** Maximum non-empty rows the child may read from one sheet. A header row counts like any other row. */
   maxRowsPerSheet?: number
+  /** Maximum children running at once. */
+  maxConcurrent?: number
+  /** Maximum extractions waiting for a child slot. A call beyond this fails at once as busy. */
+  maxQueued?: number
+  /** Child V8 old-space cap in MiB, passed as `--max-old-space-size`. */
+  maxHeapMb?: number
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-tool-document -->

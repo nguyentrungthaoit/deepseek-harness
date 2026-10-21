@@ -10,22 +10,22 @@
 
 Có chữ đó thì tool đã gắn. Mở hội thoại mới, đưa một file `.docx` vào workspace, nhắn "Đọc file này". Hội thoại phải có một hàng tên `read_document` và có đoạn chữ đọc được.
 
-Không thấy `tool-document` thì phiên chưa có tool. Làm mục dưới.
+Không thấy `tool-document` thì phiên chưa có tool. Đọc mục "Chưa có tool".
 
-## Gắn tool
+## Chưa có tool
 
-Tag image nằm ở `DSH_IMAGE_TAG` trong `docker/compose.env`. Giá trị cần là `0.2.1-alpha.5`. Tag cũ hơn không chứa package, nên gắn plugin cũng không gọi được.
+Preset Standard, PTC và Cordis đã có `read_document`. Preset Minimal không có.
 
-Trong container, file preset là `/data/dsh/profiles/web/cordis.patch.yml`. Volume `dsh-home` giữ file này. Trong danh sách plugin của preset `standard`, `ptc` hoặc `cordis`, thêm hàng sau cạnh `tool-fs`:
+Trong Docker, preset gốc có tool từ image `0.2.1-alpha.6`. Tag nằm ở `DSH_IMAGE_TAG` trong `docker/compose.env`. Image `0.2.1-alpha.4` và `0.2.1-alpha.5` có package nhưng preset gốc không có tool; chỉ hàng thêm tay theo guide cũ mới bật được. Image trước `0.2.1-alpha.4` không chứa package, nên không cấu hình nào thêm được tool.
 
-```yaml
-- id: tool-document
-  name: '@deepseek-ai/dsh-tool-document'
-```
+Desktop và SDK không có tool này.
 
-Giữ các hàng plugin khác của preset. Lưu file, mở hội thoại mới, rồi làm lại bước tìm `tool-document`.
+## Đã thêm hàng theo guide cũ
 
-Preset Minimal không có tool file. Desktop và SDK không có hàng này.
+Guide cũ bảo thêm khối `tool-document` vào `/data/dsh/profiles/web/cordis.patch.yml`. Khối đó thay cả danh sách plugin của preset, nên preset gốc mới không tới máy bạn. Tool vẫn chạy. Chọn một:
+
+1. Giữ khối. Không đổi gì, nhưng không nhận thay đổi preset sau này.
+2. Xóa đúng khối đã thêm, rồi khởi động lại container để dùng preset gốc. Chỉnh sửa khác trong cùng khối cũng mất. Chỉ làm vậy với image `0.2.1-alpha.6` trở lên. Trên `0.2.1-alpha.4` và `0.2.1-alpha.5`, preset gốc không có tool, nên xóa khối là mất tool.
 
 ## Nhờ model đọc
 
@@ -35,7 +35,19 @@ Kết quả là chữ có số dòng. Bảng Word và ô Excel cách nhau bằng
 
 Đuôi dùng được: `.docx`, `.pdf` có lớp chữ, `.xlsx`. PDF scan không có chữ thì lần gọi vẫn xong và báo không có chữ. Đuôi `.doc`, `.xls`, `.ppt`, `.pptx` không dùng tool này. File chữ thường vẫn dùng `read`.
 
-Một lần gọi nhận file tối đa 32 MiB, PDF tối đa 50 trang, và dừng sau 30 giây. File hỏng hoặc có mật khẩu thì lần gọi lỗi.
+## Trần và lỗi
+
+Một lần gọi nhận file tối đa 32 MiB và dừng sau 30 giây. Thời gian chờ lượt không tính.
+
+Đọc dừng ở trần: 50 trang PDF, 32 sheet, 5000 dòng có dữ liệu mỗi sheet (tính cả hàng tiêu đề cột), hoặc 1.000.000 ký tự. Kết quả đánh dấu bị cắt và có thông báo, ví dụ `Extraction stopped at maxPages (50 of 212 pages).` Phần đã đọc vẫn được trả.
+
+Cùng lúc đọc tối đa 2 file, 8 file khác được chờ. Quá số đó thì lỗi `read_document is busy; retry after the running reads finish`. Đợi lượt đang chạy xong rồi thử lại.
+
+File quá nặng thì lỗi `read_document ran out of memory; the file is too large to extract`.
+
+Máy không có sandbox thì lỗi `read_document cannot run because no sandbox is available on this host; do not retry`. Đừng thử lại.
+
+File hỏng hoặc có mật khẩu thì lần gọi lỗi.
 
 ## Đọc thêm
 

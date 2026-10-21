@@ -1,13 +1,18 @@
 /**
- * Session-scoped skill catalog: list, write, and delete over `remote.skills`.
+ * Session-scoped skill catalog: list, write, and delete over `remote.skills`,
+ * plus each session's Skills tab view.
  *
- * Extra list fields (`kind`, `subagent`, `source`, `writable`, `body`) are read
- * from each row when the host supplies them. A missing `kind` counts as a skill.
- * Bodies last written here fill a later list row that omits `body`, so a
- * subagent toggle can send the same markdown back.
+ * Writable rows carry the host's `body` and file `version`. A write or delete
+ * sends that version back as `expectedVersion`; the host rejects a stale one
+ * with `skills/conflict`, and the catalog then lists again. A write without a
+ * `body` keeps the body on disk.
  */
-import type { RemoteResult, SessionId, SkillEntry } from '@deepseek-ai/dsh-api-remotes/client'
+import type {
+  RemoteResult, SessionId, SkillEntry, SkillFileVersion, SkillWriteRequest,
+} from '@deepseek-ai/dsh-api-remotes/client'
 import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
+import type { TypertRemoteNamespaceMap } from '@deepseek-ai/dsh-typert-protocol'
+import { createNavigationStore, reconcileView, type SkillView } from './navigation-store.ts'
 
 /** One catalog row the panel can group and edit. */
 export interface ManagedSkill {
@@ -16,22 +21,31 @@ export interface ManagedSkill {
   readonly path?: string
   readonly whenToUse?: string
   readonly modelInvocable: boolean
-  readonly kind: 'rule' | 'skill'
   readonly subagent: boolean
   readonly source: string
   readonly writable: boolean
-  /** Markdown after frontmatter, when the list or a save in this panel supplied it. */
+  /** Markdown after frontmatter; absent when the host could not read it. */
   readonly body?: string
+  /** File version of a writable row; sent back as `expectedVersion`. */
+  readonly version?: SkillFileVersion
 }
 
 /** Fields the create and edit form submits. */
 export interface SkillDraft {
   readonly name: string
   readonly description: string
-  readonly kind: 'rule' | 'skill'
   readonly subagent: boolean
-  readonly body: string
+  /** Omitted to keep the body on disk. */
+  readonly body?: string
   readonly replaces?: string
+  readonly expectedVersion?: SkillFileVersion
+}
+
+/** Why a write or delete failed. */
+export interface SkillFailure {
+  readonly message: string
+  /** True when the file changed on disk after the row was listed. */
+  readonly conflict: boolean
 }
 
 /** Published catalog for one session. */
@@ -41,42 +55,16 @@ export interface CatalogSnapshot {
   readonly message?: string
 }
 
-/** Write and delete as the host remote declares them, viewed locally until the generated client includes them. */
-interface SkillMutations {
-  write(request: SkillWriteRequest, signal?: AbortSignal): Promise<RemoteResult<unknown>>
-  delete(request: SkillDeleteRequest, signal?: AbortSignal): Promise<RemoteResult<unknown>>
+/** One session's catalog snapshot and Skills tab view; created and dropped together. */
+export interface SessionStores {
+  readonly catalog: SnapshotStore<CatalogSnapshot>
+  readonly view: SnapshotStore<SkillView>
 }
 
-/** `skills/write` request. */
-interface SkillWriteRequest {
-  readonly sessionId: SessionId
-  readonly name: string
-  readonly description: string
-  readonly kind: 'rule' | 'skill'
-  readonly subagent: boolean
-  readonly body: string
-  readonly replaces?: string
-}
-
-/** `skills/delete` request. */
-interface SkillDeleteRequest {
-  readonly sessionId: SessionId
-  readonly name: string
-}
-
-/** Optional fields a list row may carry before the generated `SkillEntry` includes them. */
-type SkillExtras = {
-  readonly kind?: 'rule' | 'skill'
-  readonly subagent?: boolean
-  readonly source?: string
-  readonly writable?: boolean
-  readonly body?: string
-}
+/** `ctx.remote.skills`. */
+type SkillsRemote = TypertRemoteNamespaceMap['skills']
 
 const KEBAB_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u
-
-/** Stable failure when the remote namespace does not yet expose write and delete. */
-export const SKILL_MUTATIONS_UNAVAILABLE = 'unavailable'
 
 /**
  * Whether `name` is a single kebab-case skill name.
@@ -88,99 +76,77 @@ export function isKebabName(name: string): boolean {
 }
 
 /**
- * Split a catalog into Rules and everything else, each ordered by name.
+ * Split a catalog into editable and read-only rows, each ordered by name.
  * @param skills - the session catalog.
- * @returns the two groups the panel renders.
+ * @returns the two groups the list renders.
  */
 export function groupSkills(skills: readonly ManagedSkill[]): {
-  readonly rules: readonly ManagedSkill[]
-  readonly skills: readonly ManagedSkill[]
+  readonly editable: readonly ManagedSkill[]
+  readonly readonly: readonly ManagedSkill[]
 } {
-  const rules: ManagedSkill[] = []
-  const rest: ManagedSkill[] = []
-  for (const skill of skills) {
-    if (skill.kind === 'rule') rules.push(skill)
-    else rest.push(skill)
+  const sorted = [...skills].sort((left, right) => left.name.localeCompare(right.name))
+  return {
+    editable: sorted.filter(skill => skill.writable),
+    readonly: sorted.filter(skill => !skill.writable),
   }
-  const byName = (left: ManagedSkill, right: ManagedSkill): number => left.name.localeCompare(right.name)
-  rules.sort(byName)
-  rest.sort(byName)
-  return { rules, skills: rest }
 }
 
-/** One list row, including fields a generated `SkillEntry` may not declare yet. */
-type ListedRow = {
-  readonly name: string
-  readonly description: string
-  readonly path?: string
-  readonly whenToUse?: string
-  readonly modelInvocable: boolean
-} & SkillExtras
-
 /**
- * Read one list row, including fields the generated entry may not declare yet.
+ * Read one list row.
  * @param entry - one `skills/list` row.
  * @returns the panel's row.
  */
-export function toManagedSkill(entry: ListedRow): ManagedSkill {
-  const row: ListedRow = entry
-  const body = typeof row.body === 'string' ? row.body : undefined
+export function toManagedSkill(entry: SkillEntry): ManagedSkill {
   return {
-    name: row.name,
-    description: row.description,
-    ...row.path === undefined ? {} : { path: row.path },
-    ...row.whenToUse === undefined ? {} : { whenToUse: row.whenToUse },
-    modelInvocable: row.modelInvocable,
-    kind: row.kind === 'rule' ? 'rule' : 'skill',
-    subagent: row.subagent === true,
-    source: typeof row.source === 'string' ? row.source : '',
-    writable: row.writable === true,
-    ...body === undefined ? {} : { body },
+    name: entry.name,
+    description: entry.description,
+    ...entry.path === undefined ? {} : { path: entry.path },
+    ...entry.whenToUse === undefined ? {} : { whenToUse: entry.whenToUse },
+    modelInvocable: entry.modelInvocable,
+    subagent: entry.subagent,
+    source: entry.source,
+    writable: entry.writable,
+    ...entry.body === undefined ? {} : { body: entry.body },
+    ...entry.version === undefined ? {} : { version: entry.version },
   }
-}
-
-function isFunctionMember(value: object, key: 'write' | 'delete'): boolean {
-  // `in` sees class methods; Reflect.get reads them without assuming the generated client already declares write and delete.
-  return key in value && typeof Reflect.get(value, key) === 'function'
-}
-
-function hasMutations(value: object): value is SkillMutations {
-  return isFunctionMember(value, 'write') && isFunctionMember(value, 'delete')
 }
 
 const IDLE: CatalogSnapshot = { status: 'idle', skills: [] }
 
-/** The list face this panel needs from `ctx.remote.skills`, plus write and delete when the host exposes them. */
-interface SkillsRemote {
-  list(
-    request: { readonly sessionId: SessionId },
-    signal?: AbortSignal,
-  ): Promise<RemoteResult<{ readonly skills: readonly SkillEntry[] }>>
-  write?(request: SkillWriteRequest, signal?: AbortSignal): Promise<RemoteResult<unknown>>
-  delete?(request: SkillDeleteRequest, signal?: AbortSignal): Promise<RemoteResult<unknown>>
-}
-
 /**
  * One plugin's catalogs, keyed by session.
- * The constructor captures the remote namespace; each session owns one snapshot.
+ * The constructor captures the remote namespace; each session owns one
+ * catalog snapshot and one view store.
  */
 export class SkillCatalog {
-  private readonly stores = new Map<SessionId, SnapshotStore<CatalogSnapshot>>()
-  private readonly bodies = new Map<SessionId, Map<string, string>>()
+  private readonly stores = new Map<SessionId, SessionStores>()
   private readonly inflight = new Map<SessionId, AbortController>()
 
-  /** @param skills - `ctx.remote.skills`. */
-  constructor(private readonly skills: SkillsRemote) {}
+  /**
+   * @param skills - `ctx.remote.skills`.
+   * @param isBound - whether a session still has a client binding; unbound sessions are forgotten.
+   */
+  constructor(
+    private readonly skills: SkillsRemote,
+    private readonly isBound: (sessionId: SessionId) => boolean,
+  ) {}
 
   /**
-   * The session's catalog source. The first read starts a list.
-   * @param sessionId - session whose catalog to publish.
-   * @returns the snapshot source the panel hook binds.
+   * The session's catalog and view stores. The first read starts a list;
+   * sessions whose binding is gone are dropped first.
+   * @param sessionId - session whose stores to publish.
+   * @returns the stores the panel hooks bind.
    */
-  source(sessionId: SessionId): SnapshotStore<CatalogSnapshot> {
-    const store = this.storeFor(sessionId)
-    if (store.getSnapshot().status === 'idle') void this.reload(sessionId)
-    return store
+  source(sessionId: SessionId): SessionStores {
+    for (const id of [...this.stores.keys()]) {
+      if (id === sessionId || this.isBound(id)) continue
+      this.inflight.get(id)?.abort()
+      this.inflight.delete(id)
+      this.stores.delete(id)
+    }
+    const stores = this.storesFor(sessionId)
+    if (stores.catalog.getSnapshot().status === 'idle') void this.reload(sessionId)
+    return stores
   }
 
   /**
@@ -198,9 +164,8 @@ export class SkillCatalog {
     this.inflight.get(sessionId)?.abort()
     const abort = new AbortController()
     this.inflight.set(sessionId, abort)
-    const store = this.storeFor(sessionId)
-    const current = store.getSnapshot()
-    if (current.skills.length === 0) store.set({ status: 'loading', skills: [] })
+    const store = this.storesFor(sessionId).catalog
+    if (store.getSnapshot().skills.length === 0) store.set({ status: 'loading', skills: [] })
     return this.fetch(sessionId, abort)
   }
 
@@ -208,75 +173,54 @@ export class SkillCatalog {
    * Write one flat skill file.
    * @param sessionId - session whose project receives the file.
    * @param draft - form fields.
-   * @returns a failure message, or undefined when the write was accepted.
+   * @returns a failure, or undefined when the write was accepted.
    */
-  async write(sessionId: SessionId, draft: SkillDraft): Promise<string | undefined> {
+  async write(sessionId: SessionId, draft: SkillDraft): Promise<SkillFailure | undefined> {
     const request: SkillWriteRequest = {
       sessionId,
       name: draft.name,
       description: draft.description,
-      kind: draft.kind,
       subagent: draft.subagent,
-      body: draft.body,
+      ...draft.body === undefined ? {} : { body: draft.body },
       ...draft.replaces === undefined ? {} : { replaces: draft.replaces },
+      ...draft.expectedVersion === undefined ? {} : { expectedVersion: draft.expectedVersion },
     }
-    const failed = await this.mutate(mutations => mutations.write(request))
-    if (failed !== undefined) return failed
-    const remembered = this.remember(sessionId, draft.name, draft.body)
-    if (draft.replaces !== undefined && draft.replaces !== draft.name) remembered.delete(draft.replaces)
-    await this.reload(sessionId)
-    return undefined
+    return this.settle(sessionId, () => this.skills.write(request))
   }
 
   /**
    * Delete one writable skill file.
    * @param sessionId - session whose project owns the file.
    * @param name - skill name.
-   * @returns a failure message, or undefined when the delete was accepted.
+   * @param expectedVersion - the row's version, when the host listed one.
+   * @returns a failure, or undefined when the delete was accepted.
    */
-  async remove(sessionId: SessionId, name: string): Promise<string | undefined> {
-    const failed = await this.mutate(mutations => mutations.delete({ sessionId, name }))
-    if (failed !== undefined) return failed
-    this.bodies.get(sessionId)?.delete(name)
-    await this.reload(sessionId)
-    return undefined
+  async remove(
+    sessionId: SessionId,
+    name: string,
+    expectedVersion?: SkillFileVersion,
+  ): Promise<SkillFailure | undefined> {
+    const request = { sessionId, name, ...expectedVersion === undefined ? {} : { expectedVersion } }
+    return this.settle(sessionId, () => this.skills.delete(request))
   }
 
-  /** Abort every list still in flight. */
+  /** Abort every list still in flight and forget every session. */
   dispose(): void {
     for (const abort of this.inflight.values()) abort.abort()
     this.inflight.clear()
+    this.stores.clear()
   }
 
-  private storeFor(sessionId: SessionId): SnapshotStore<CatalogSnapshot> {
+  private storesFor(sessionId: SessionId): SessionStores {
     const existing = this.stores.get(sessionId)
     if (existing !== undefined) return existing
-    const store = createSnapshotStore<CatalogSnapshot>(IDLE)
-    this.stores.set(sessionId, store)
-    return store
-  }
-
-  private remember(sessionId: SessionId, name: string, body: string): Map<string, string> {
-    const map = this.bodies.get(sessionId) ?? new Map<string, string>()
-    map.set(name, body)
-    this.bodies.set(sessionId, map)
-    return map
-  }
-
-  private overlay(sessionId: SessionId, skills: readonly ManagedSkill[]): ManagedSkill[] {
-    const remembered = this.bodies.get(sessionId)
-    return skills.map((skill) => {
-      if (skill.body !== undefined) {
-        this.remember(sessionId, skill.name, skill.body)
-        return skill
-      }
-      const body = remembered?.get(skill.name)
-      return body === undefined ? skill : { ...skill, body }
-    })
+    const stores: SessionStores = { catalog: createSnapshotStore<CatalogSnapshot>(IDLE), view: createNavigationStore() }
+    this.stores.set(sessionId, stores)
+    return stores
   }
 
   private async fetch(sessionId: SessionId, abort: AbortController): Promise<void> {
-    const store = this.storeFor(sessionId)
+    const { catalog: store, view } = this.storesFor(sessionId)
     try {
       const result = await this.skills.list({ sessionId }, abort.signal)
       if (abort.signal.aborted) return
@@ -284,7 +228,11 @@ export class SkillCatalog {
         store.set({ status: 'error', skills: store.getSnapshot().skills, message: result.error.message })
         return
       }
-      store.set({ status: 'ready', skills: this.overlay(sessionId, result.value.skills.map(toManagedSkill)) })
+      const skills = result.value.skills.map(toManagedSkill)
+      store.set({ status: 'ready', skills })
+      const current = view.getSnapshot()
+      const next = reconcileView(current, new Set(skills.map(skill => skill.name)))
+      if (next !== current) view.set(next)
     } catch (error) {
       if (abort.signal.aborted) return
       const message = error instanceof Error ? error.message : String(error)
@@ -294,18 +242,23 @@ export class SkillCatalog {
     }
   }
 
-  private async mutate(
-    run: (mutations: SkillMutations) => Promise<RemoteResult<unknown>>,
-  ): Promise<string | undefined> {
-    const carrier: object = this.skills
-    if (!hasMutations(carrier)) return SKILL_MUTATIONS_UNAVAILABLE
+  private async settle(
+    sessionId: SessionId,
+    run: () => Promise<RemoteResult<unknown>>,
+  ): Promise<SkillFailure | undefined> {
+    let result: RemoteResult<unknown>
     try {
-      const result = await run(carrier)
-      if (!result.ok) return result.error.message
-      return undefined
+      result = await run()
     } catch (error) {
-      // Assembly faults reject; a host refusal arrives as `ok: false` above.
-      return error instanceof Error ? error.message : String(error)
+      // Assembly faults reject; a host refusal arrives as `ok: false` below.
+      return { message: error instanceof Error ? error.message : String(error), conflict: false }
     }
+    if (!result.ok) {
+      const conflict = result.error.code === 'skills/conflict'
+      if (conflict) await this.reload(sessionId)
+      return { message: result.error.message, conflict }
+    }
+    await this.reload(sessionId)
+    return undefined
   }
 }

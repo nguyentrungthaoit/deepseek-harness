@@ -10,6 +10,8 @@ Check the [exit code: N] marker on every bash result; investigate failures befor
 
 Use the read tool — not shell commands like cat — to inspect text files. Use offset and limit to continue reading large files.
 
+Use read_document, not read, for .docx, .pdf, and .xlsx files. Use offset to continue reading a long document.
+
 Read an existing file before overwriting it with write (the default fs-observation-policy requires it) and prefer edit for targeted changes.
 
 Read a file before editing it (the default fs-observation-policy requires it), unless you just created or edited it in this session.
@@ -173,6 +175,15 @@ interface ToolArgsMap {
   /** Read a UTF-8 text file and return line-numbered content. */
   read: {
     /** Path to read, resolved by the filesystem backend. */
+    file_path: string;
+    /** 1-based first line to return. Defaults to 1. */
+    offset?: number;
+    /** Maximum number of lines to return. Defaults to 2000. */
+    limit?: number;
+  } & Record<string, JsonValue>;
+  /** Read text and tables from a .docx, .pdf, or .xlsx file. Use read_document for these extensions because read rejects binary files. Word paragraphs and tables become text lines, Excel sheets become tab-separated rows, and PDF text comes from the text layer with page markers. */
+  read_document: {
+    /** Path to a .docx, .pdf, or .xlsx file, resolved by the filesystem backend. */
     file_path: string;
     /** 1-based first line to return. Defaults to 1. */
     offset?: number;
@@ -508,6 +519,18 @@ interface ToolOutputMap {
       text: string;
     }[];
     totalLines: number;
+  };
+  read_document: {
+    path: string;
+    format: "docx" | "pdf" | "xlsx";
+    offset: number;
+    lines: {
+      number: number;
+      text: string;
+    }[];
+    totalLines: number;
+    truncated: boolean;
+    notice?: string;
   };
   read_image: {
     path: string;

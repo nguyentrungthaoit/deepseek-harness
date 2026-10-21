@@ -167,8 +167,8 @@ const homeAndGuide = pairedPages([
     route: 'guide/read-document.md',
     label: { root: '读取 Word、PDF 和 Excel', en: 'Read Word, PDF, and Excel' },
     sidebar: { root: 'zh-guide', en: 'en-guide' },
-    section: { root: '文件', en: 'Files' },
-    order: 1,
+    section: { root: '入门', en: 'Guide' },
+    order: 5,
   },
   {
     source: 'docs/user/guide/schedule.md',

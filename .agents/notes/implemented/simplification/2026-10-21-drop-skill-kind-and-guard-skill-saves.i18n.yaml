@@ -1,0 +1,22 @@
+# Bilingual-pair consistency record for 2026-10-21-drop-skill-kind-and-guard-skill-saves.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/simplification/2026-10-21-drop-skill-kind-and-guard-skill-saves.md
+/agent-note-drop-the-skill-kind-and-guard-skill-saves:
+  en: 81c636fd6921758f
+  zh: 5964cec93d0d7be3
+/agent-note-drop-the-skill-kind-and-guard-skill-saves/problem:
+  en: 0f927c2e1a000af2
+  zh: 5ab885f78b3ee8df
+/agent-note-drop-the-skill-kind-and-guard-skill-saves/decision:
+  en: eeba2fe4f955e198
+  zh: 46364c399fa4af3e
+/agent-note-drop-the-skill-kind-and-guard-skill-saves/alternatives-considered:
+  en: 2c5f16736549a561
+  zh: 1ff0ea3636b0b413
+/agent-note-drop-the-skill-kind-and-guard-skill-saves/consequences:
+  en: 61f6388d0b24cec4
+  zh: 54a1e237ead86aa5
+/agent-note-drop-the-skill-kind-and-guard-skill-saves/testing:
+  en: 32f85555802c824f
+  zh: d40fd19fc95dd81c

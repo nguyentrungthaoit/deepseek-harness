@@ -3,32 +3,41 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/client/ui-skill-manager/README.md
 /:
-  en: 8e3eb327045cdd46
-  zh: 0c8bcac0fcf9626a
+  en: fd1292a5f7a5d7f0
+  zh: dbf74267d2fe5277
 /deepseek-ai-dsh-client-ui-skill-manager:
   en: 30f16f238d43a2cd
   zh: fc7455777932fbea
 /deepseek-ai-dsh-client-ui-skill-manager/summary:
-  en: 79cbe4422b0db764
-  zh: b8a20860831d859a
+  en: 1f007db29f9dc4aa
+  zh: 294456f4dd5680a8
 /deepseek-ai-dsh-client-ui-skill-manager/table-of-contents:
-  en: e068a56bd457a2a8
-  zh: d4872955b403c734
+  en: 5f5967125247c2ce
+  zh: 4871bcff776846bd
 /deepseek-ai-dsh-client-ui-skill-manager/what-it-registers:
-  en: b164bd4579aa8a0b
-  zh: be9974c6bacf3b06
+  en: 65c38daa9aa8a1b6
+  zh: 50686ea9efe7bae2
+/deepseek-ai-dsh-client-ui-skill-manager/pages:
+  en: 6de26e74efb0a6d4
+  zh: e0544dabc1e94cb2
+/deepseek-ai-dsh-client-ui-skill-manager/navigation:
+  en: 3fce6726d229e448
+  zh: 53b2dfb0c9640621
 /deepseek-ai-dsh-client-ui-skill-manager/the-catalog:
-  en: cb153ae89035db51
-  zh: e0a1b9f8f6475b3c
+  en: 3c627124c8db53cd
+  zh: 86f13a5fbd620657
+/deepseek-ai-dsh-client-ui-skill-manager/the-toast:
+  en: 3cda65c3525a298c
+  zh: 1cab1abcc53fabc8
 /deepseek-ai-dsh-client-ui-skill-manager/model-experience:
-  en: d85be302879089f5
-  zh: 2c43776742a96cc5
+  en: 7572d05bb9af7153
+  zh: 7e235dd30f974cf7
 /deepseek-ai-dsh-client-ui-skill-manager/model-experience/kv-cache-effect:
   en: eb2fef5e8a35d911
   zh: 3ac94284c59a0419
 /deepseek-ai-dsh-client-ui-skill-manager/known-limitations-and-deferred-work:
-  en: 6fbf6acfffdf9593
-  zh: 6b805ced77648da9
+  en: c97026095502e38d
+  zh: 76dedfaf0a92c461
 /deepseek-ai-dsh-client-ui-skill-manager/known-limitations-and-deferred-work/dev-note:
   en: e67f633dc6fe7773
   zh: e88aeb617ffb74ea

@@ -1,29 +1,36 @@
 /**
  * Model-facing `read_document` tool. The parent resolves the path, enforces the byte cap,
  * checks ZIP limits for docx and xlsx, and spawns one read-only child. Parsers do not run here.
+ * Finished extractions are cached by `FsTarget.targetKey`, `FsInfo.version`, and size, so reading on with `offset`
+ * does not spawn again.
  * @module @deepseek-ai/dsh-tool-document
  */
 
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { FsError } from '@deepseek-ai/dsh-fs'
-import type {} from '@deepseek-ai/dsh-fs'
+import type { FsInfo, FsTarget } from '@deepseek-ai/dsh-fs'
 import type {} from '@deepseek-ai/dsh-sandbox'
 import type {} from '@deepseek-ai/dsh-sandbox-policy'
 import type {} from '@deepseek-ai/dsh-subprocess'
+import type {} from '@deepseek-ai/dsh-system-prompt'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-tools'
 import type { ToolExecution } from '@deepseek-ai/dsh-tools'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
-import { assertZipLimits } from './zip-limit.ts'
+import { ExtractionCache } from './cache.ts'
+import type { ExtractionOutcome } from './cache.ts'
 import { runChild } from './child.ts'
-import type { ChildOutput, ChildWatch, DocumentFormat } from './child.ts'
+import type { ChildWatch } from './child.ts'
+import type { ChildOutput, DocumentFormat, ExtractionCap } from './extract.ts'
+import { ExtractionSlots } from './slots.ts'
+import { assertZipLimits } from './zip-limit.ts'
 
 /** Cordis plugin name used by loader diagnostics. */
 export const name = 'tool-document'
 
-/** Services required to resolve a path and spawn a confined child. */
-export const inject = ['tools', 'fs', 'sandbox', 'subprocess', 'sandboxPolicy']
+/** Services required to resolve a path, spawn a confined child, and add prompt guidance. */
+export const inject = ['tools', 'fs', 'sandbox', 'subprocess', 'sandboxPolicy', 'systemPrompt']
 
 /** Default maximum file bytes read before a child starts. */
 const DEFAULT_MAX_INPUT_BYTES = 32 * 1024 * 1024
@@ -40,7 +47,7 @@ const DEFAULT_MAX_PAGES = 50
 /** Default maximum characters the child may return. */
 const DEFAULT_MAX_EXTRACTED_CHARS = 1_000_000
 
-/** Default child deadline, also the subprocess grace period. */
+/** Default child deadline, counted from spawn. */
 const DEFAULT_TIMEOUT_MS = 30_000
 
 /** Default and maximum lines returned by one call. */
@@ -55,11 +62,29 @@ const DEFAULT_MAX_BYTES = 50 * 1024
 /** Default maximum Excel sheets. */
 const DEFAULT_MAX_SHEETS = 32
 
-/** Default maximum data rows read from one sheet. */
+/** Default maximum non-empty rows read from one sheet, a header row included. */
 const DEFAULT_MAX_ROWS_PER_SHEET = 5_000
 
-/** Largest delay `setTimeout` and the subprocess grace period accept. */
+/** Default children running at once. */
+const DEFAULT_MAX_CONCURRENT = 2
+
+/** Default extractions waiting for a child slot. */
+const DEFAULT_MAX_QUEUED = 8
+
+/**
+ * Default child V8 heap in MiB. ExcelJS needs roughly ten times the XML size, so a valid workbook near the
+ * 32 MiB uncompressed cap can use 300-600 MB.
+ */
+const DEFAULT_MAX_HEAP_MB = 1024
+
+/** Largest delay `setTimeout` accepts. */
 const MAX_TIMER_DELAY_MS = 2_147_483_647
+
+/** Finished extractions kept per plugin instance. */
+const CACHE_MAX_ENTRIES = 4
+
+/** Total UTF-16 bytes of kept extraction text. */
+const CACHE_MAX_BYTES = 8 * 1024 * 1024
 
 /** Plugin config. Every field is optional; {@link Config} supplies the defaults. */
 export interface Config {
@@ -73,7 +98,7 @@ export interface Config {
   maxPages?: number
   /** Maximum characters the child may return. */
   maxExtractedChars?: number
-  /** Child deadline in milliseconds. */
+  /** Child deadline in milliseconds, counted from spawn. Time spent waiting for a slot does not count. */
   timeoutMs?: number
   /** Default and maximum lines returned by one call. */
   limit?: number
@@ -83,8 +108,14 @@ export interface Config {
   maxBytes?: number
   /** Maximum Excel sheets the child may read. */
   maxSheets?: number
-  /** Maximum data rows the child may read from one sheet. */
+  /** Maximum non-empty rows the child may read from one sheet. A header row counts like any other row. */
   maxRowsPerSheet?: number
+  /** Maximum children running at once. */
+  maxConcurrent?: number
+  /** Maximum extractions waiting for a child slot. A call beyond this fails at once as busy. */
+  maxQueued?: number
+  /** Child V8 old-space cap in MiB, passed as `--max-old-space-size`. */
+  maxHeapMb?: number
 }
 
 /** Schemastery schema for {@link Config}. Defaults apply at load. */
@@ -100,6 +131,9 @@ export const Config: z<Config> = z.object({
   maxBytes: z.number().default(DEFAULT_MAX_BYTES),
   maxSheets: z.number().default(DEFAULT_MAX_SHEETS),
   maxRowsPerSheet: z.number().default(DEFAULT_MAX_ROWS_PER_SHEET),
+  maxConcurrent: z.number().default(DEFAULT_MAX_CONCURRENT),
+  maxQueued: z.number().default(DEFAULT_MAX_QUEUED),
+  maxHeapMb: z.number().default(DEFAULT_MAX_HEAP_MB),
 })
 
 /** Config after schemastery has filled every default. */
@@ -111,7 +145,10 @@ interface DocumentLine {
   text: string
 }
 
-/** Canonical `read_document` value. `notice` is present only for a PDF with no text layer. */
+/**
+ * Canonical `read_document` value. `notice` is present for a PDF with no text layer and when a cap
+ * stopped extraction; a cap also sets `truncated`.
+ */
 interface DocumentValue {
   path: string
   format: DocumentFormat
@@ -130,7 +167,7 @@ interface WindowRequest {
 }
 
 /**
- * Register `read_document`.
+ * Register `read_document` and its prompt guidance.
  * @param ctx - the plugin context. Registrations end when its fiber disposes.
  * @param config - deployment caps. Schemastery has already applied defaults.
  */
@@ -147,21 +184,92 @@ export function apply(ctx: Context, config: Config): void {
   assertPositiveInteger('maxBytes', resolved.maxBytes)
   assertPositiveInteger('maxSheets', resolved.maxSheets)
   assertPositiveInteger('maxRowsPerSheet', resolved.maxRowsPerSheet)
+  assertPositiveInteger('maxConcurrent', resolved.maxConcurrent)
+  assertPositiveInteger('maxQueued', resolved.maxQueued)
+  assertPositiveInteger('maxHeapMb', resolved.maxHeapMb)
 
-  const live = new Set<{ terminate(): void; done: Promise<void> }>()
+  const slots = new ExtractionSlots(resolved.maxConcurrent, resolved.maxQueued)
+  const cache = new ExtractionCache({ maxEntries: CACHE_MAX_ENTRIES, maxBytes: CACHE_MAX_BYTES })
+  const live = new Set<{ terminate(): void; done: Promise<undefined> }>()
   ctx.effect(() => async () => {
+    slots.dispose()
+    const settled = cache.dispose()
     const pending = [...live]
     for (const item of pending) item.terminate()
     await Promise.all(pending.map(item => item.done))
+    await settled
   }, 'document extractor quiescence')
   const watch: ChildWatch = {
     watch(handle) {
-      let settle = (): void => {}
-      const done = new Promise<void>((resolve) => { settle = resolve })
-      const item = { terminate: () => { handle.terminate() }, done }
+      const exited = Promise.withResolvers<undefined>()
+      const item = { terminate: () => { handle.terminate() }, done: exited.promise }
       live.add(item)
-      return { release: () => { live.delete(item); settle() } }
+      return { release: () => { live.delete(item); exited.resolve(undefined) } }
     },
+  }
+
+  ctx.systemPrompt.section({
+    name: 'tool:read_document',
+    order: ctx.systemPrompt.getSectionOrder('TOOL_READ_DOCUMENT'),
+    text: ({ scope }) => ctx.tools.get('read_document', scope) === undefined
+      ? ''
+      : 'Use read_document, not read, for .docx, .pdf, and .xlsx files. Use offset to continue reading a long document.',
+  })
+
+  /**
+   * One extraction under the shared signal. The slot is held from before the read until the child exits.
+   * The caller that starts it supplies the sandbox policy; the read-only child sees only the bytes on stdin.
+   */
+  async function extractFile(
+    exec: ToolExecution,
+    target: FsTarget,
+    info: FsInfo,
+    format: DocumentFormat,
+    signal: AbortSignal,
+  ): Promise<ExtractionOutcome> {
+    const release = await slots.acquire(signal)
+    let output: ChildOutput
+    try {
+      const bytes = await ctx.fs.readBytes(target, signal, resolved.maxInputBytes)
+      switch (format) {
+        case 'docx':
+        case 'xlsx':
+          assertZipLimits(bytes, {
+            maxArchiveEntries: resolved.maxArchiveEntries,
+            maxUncompressedBytes: resolved.maxUncompressedBytes,
+          })
+          break
+        case 'pdf':
+          break
+        /* v8 ignore next 2 -- DocumentFormat is a closed union */
+        default:
+          return assertNever(format, 'read_document format')
+      }
+      const policy = exec.agent === undefined
+        ? ctx.sandboxPolicy.resolve()
+        : ctx.sandboxPolicy.resolve({ session: exec.agent.session })
+      output = await runChild(ctx, {
+        bytes,
+        request: {
+          format,
+          maxPages: resolved.maxPages,
+          maxExtractedChars: resolved.maxExtractedChars,
+          maxSheets: resolved.maxSheets,
+          maxRowsPerSheet: resolved.maxRowsPerSheet,
+        },
+        timeoutMs: resolved.timeoutMs,
+        maxHeapMb: resolved.maxHeapMb,
+        signal,
+        workspaceRoot: policy.workspaceRoot,
+        ...policy.sessionId === undefined ? {} : { sessionId: policy.sessionId },
+        watch,
+      })
+    } finally {
+      release()
+    }
+    // The bytes were read after the first stat. Keep the result only when the file still matches it.
+    const after = await ctx.fs.stat(target, signal).catch(() => undefined)
+    return { output, cacheable: after !== undefined && after.version === info.version && after.size === info.size }
   }
 
   ctx.tools.register(defineTool({
@@ -206,48 +314,19 @@ export function apply(ctx: Context, config: Config): void {
     isConcurrencySafe: () => true,
     async execute(args, exec) {
       const input = parseArgs(args, resolved.limit)
-      const target = await resolveFile(ctx, exec, input.filePath)
+      // Every session resolves and stats with its own cwd and signal before the shared cache is consulted.
+      const { target, info } = await resolveFile(ctx, exec, input.filePath)
       const format = formatOf(target.displayPath)
-      const bytes = await ctx.fs.readBytes(target, exec.signal, resolved.maxInputBytes)
-      switch (format) {
-        case 'docx':
-        case 'xlsx':
-          assertZipLimits(bytes, {
-            maxArchiveEntries: resolved.maxArchiveEntries,
-            maxUncompressedBytes: resolved.maxUncompressedBytes,
-          })
-          break
-        case 'pdf':
-          break
-        default:
-          /* v8 ignore next -- DocumentFormat is a closed union */
-          return assertNever(format, 'read_document format')
-      }
-      const policy = exec.agent === undefined
-        ? ctx.sandboxPolicy.resolve()
-        : ctx.sandboxPolicy.resolve({ session: exec.agent.session })
-      const output = await runChild(ctx, {
-        bytes,
-        request: {
-          format,
-          maxPages: resolved.maxPages,
-          maxExtractedChars: resolved.maxExtractedChars,
-          maxSheets: resolved.maxSheets,
-          maxRowsPerSheet: resolved.maxRowsPerSheet,
-        },
-        timeoutMs: resolved.timeoutMs,
-        signal: exec.signal,
-        workspaceRoot: policy.workspaceRoot,
-        ...policy.sessionId === undefined ? {} : { sessionId: policy.sessionId },
-        watch,
-      })
+      // `targetKey` is the backend's stable identity; display paths can differ for one file and repeat across backends.
+      const key = JSON.stringify([target.targetKey, info.version, info.size])
+      const output = await cache.run(key, exec.signal, signal => extractFile(exec, target, info, format, signal))
       const window = windowLines(output.text, {
         offset: input.offset,
         limit: input.limit,
         maxLineLength: resolved.maxLineLength,
         maxBytes: resolved.maxBytes,
       }, target.displayPath)
-      return documentValue(target.displayPath, format, input.offset, window, output)
+      return documentValue(target.displayPath, format, input.offset, window, output, resolved)
     },
   }))
 }
@@ -277,7 +356,7 @@ function parsePositiveInteger(value: number, field: string): number {
   return value
 }
 
-async function resolveFile(ctx: Context, exec: ToolExecution, requestedPath: string) {
+async function resolveFile(ctx: Context, exec: ToolExecution, requestedPath: string): Promise<{ target: FsTarget; info: FsInfo }> {
   const cwd = exec.agent?.session.header.cwd
   const target = await ctx.fs.resolve(requestedPath, {
     ...cwd === undefined ? {} : { cwd },
@@ -286,7 +365,7 @@ async function resolveFile(ctx: Context, exec: ToolExecution, requestedPath: str
   const info = await ctx.fs.stat(target, exec.signal)
   if (info === undefined) throw new FsError(`cannot read "${target.displayPath}": not found`, 'FS_NOT_FOUND')
   if (info.type !== 'file') throw new FsError(`cannot read "${target.displayPath}": not a regular file`, 'FS_NOT_REGULAR_FILE')
-  return target
+  return { target, info }
 }
 
 function formatOf(path: string): DocumentFormat {
@@ -313,6 +392,26 @@ function fitLine(line: string, maxLineLength: number): string {
   return `${line.slice(0, maxLineLength)}... (line truncated to ${maxLineLength} chars)`
 }
 
+/**
+ * Cut one line to at most `maxBytes` UTF-8 bytes on a character boundary, marker included.
+ * When even the marker does not fit, the line is cut to `maxBytes` without it.
+ */
+function fitLineBytes(line: string, maxBytes: number): string {
+  const marker = `... (line truncated to ${maxBytes} bytes)`
+  const markerBytes = Buffer.byteLength(marker, 'utf8')
+  if (markerBytes > maxBytes) return utf8Prefix(line, maxBytes)
+  return `${utf8Prefix(line, maxBytes - markerBytes)}${marker}`
+}
+
+/** The longest prefix of `text` whose UTF-8 encoding fits in `maxBytes`, never splitting a character. */
+function utf8Prefix(text: string, maxBytes: number): string {
+  const bytes = Buffer.from(text, 'utf8')
+  let end = Math.min(maxBytes, bytes.length)
+  // A continuation byte (10xxxxxx) at the cut means the cut falls inside a character.
+  while (end > 0 && end < bytes.length && (bytes.readUInt8(end) & 0xc0) === 0x80) end -= 1
+  return bytes.subarray(0, end).toString('utf8')
+}
+
 function windowLines(
   text: string,
   request: WindowRequest,
@@ -329,6 +428,8 @@ function windowLines(
     const bytes = Buffer.byteLength(textLine, 'utf8') + (lines.length > 0 ? 1 : 0)
     if (outputBytes + bytes > request.maxBytes) {
       truncatedByBytes = true
+      // The first selected line is always returned, cut to the byte cap, so `offset` always moves forward.
+      if (lines.length === 0) lines.push({ number, text: fitLineBytes(raw.slice(0, request.maxLineLength), request.maxBytes) })
       continue
     }
     outputBytes += bytes
@@ -337,9 +438,10 @@ function windowLines(
   if (request.offset > all.length && !(all.length === 0 && request.offset === 1)) {
     throw new Error(`offset ${request.offset} is out of range for "${displayPath}" (${all.length} lines)`)
   }
+  // Lines before `offset` were asked to be skipped. A window is cut only when lines remain after it,
+  // which also covers the byte cap: the first line that did not fit is one of them.
   const end = lines.at(-1)?.number ?? 0
-  const showedEverything = request.offset <= 1 && !truncatedByBytes && end === all.length
-  return { lines, totalLines: all.length, truncated: !showedEverything }
+  return { lines, totalLines: all.length, truncated: end < all.length }
 }
 
 function documentValue(
@@ -348,16 +450,47 @@ function documentValue(
   offset: number,
   window: { lines: DocumentLine[]; totalLines: number; truncated: boolean },
   output: ChildOutput,
+  caps: ResolvedConfig,
 ): DocumentValue {
+  const notice = documentNotice(output, caps)
   return {
     path,
     format,
     offset,
     lines: window.lines,
     totalLines: window.totalLines,
-    truncated: window.truncated,
-    ...output.notice === undefined ? {} : { notice: output.notice },
+    truncated: window.truncated || output.capped !== undefined,
+    ...notice === undefined ? {} : { notice },
   }
+}
+
+/** The child's notice followed by one sentence per cap that stopped extraction. */
+function documentNotice(output: ChildOutput, caps: ResolvedConfig): string | undefined {
+  const parts = output.notice === undefined ? [] : [output.notice]
+  for (const cap of output.capped ?? []) parts.push(capNotice(cap, output, caps))
+  return parts.length === 0 ? undefined : parts.join(' ')
+}
+
+function capNotice(cap: ExtractionCap, output: ChildOutput, caps: ResolvedConfig): string {
+  switch (cap) {
+    case 'pages':
+      return `Extraction stopped at maxPages (${ofTotal(caps.maxPages, output.pageCount, 'pages')}).`
+    case 'sheets':
+      return `Extraction stopped at maxSheets (${ofTotal(caps.maxSheets, output.sheetCount, 'sheets')}).`
+    case 'rows': {
+      const sheet = output.rowsSheet === undefined ? '' : `, first in sheet ${JSON.stringify(output.rowsSheet)}`
+      return `Extraction stopped at maxRowsPerSheet (${caps.maxRowsPerSheet} rows per sheet${sheet}).`
+    }
+    case 'chars':
+      return `Extraction stopped at maxExtractedChars (${caps.maxExtractedChars} characters).`
+    /* v8 ignore next 2 -- parseChildOutput admits only the four caps */
+    default:
+      return assertNever(cap, 'read_document cap')
+  }
+}
+
+function ofTotal(cap: number, total: number | undefined, unit: string): string {
+  return total === undefined ? `${cap} ${unit}` : `${cap} of ${total} ${unit}`
 }
 
 function renderDocument(value: DocumentValue): string {
@@ -366,8 +499,10 @@ function renderDocument(value: DocumentValue): string {
   if (!value.truncated) footer = '(End of document)'
   else if (end < value.totalLines) {
     footer = `(Output capped. Showing lines ${value.offset}-${end} of ${value.totalLines}. Use offset=${end + 1} to continue.)`
+  } else if (value.totalLines === 0) {
+    footer = '(Extraction stopped early and returned no text. See the notice above.)'
   } else {
-    footer = `(Output capped at line ${end}. The extracted text was not fully returned.)`
+    footer = `(End of extracted text at line ${end}. Extraction stopped early, so the document continues past it. See the notice above.)`
   }
   const notice = value.notice === undefined ? '' : `${value.notice}\n`
   const body = value.lines.map(line => `${line.number}|${line.text}`).join('\n')
