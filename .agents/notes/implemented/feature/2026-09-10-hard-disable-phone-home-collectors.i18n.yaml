@@ -1,0 +1,22 @@
+# Bilingual-pair consistency record for 2026-09-10-hard-disable-phone-home-collectors.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-10-hard-disable-phone-home-collectors.md
+/agent-note-hard-disable-phone-home-collectors-in-shipped-base:
+  en: fe42128308de7a92
+  zh: 962d22aa408966cd
+/agent-note-hard-disable-phone-home-collectors-in-shipped-base/problem:
+  en: 21aba56f0a191d36
+  zh: 55ad08b05a82051a
+/agent-note-hard-disable-phone-home-collectors-in-shipped-base/decision:
+  en: ce6a38e2cf6ff405
+  zh: 0d427e66b5b387c9
+/agent-note-hard-disable-phone-home-collectors-in-shipped-base/alternatives-considered:
+  en: ae9111e100f37838
+  zh: 9ba11316a9a88826
+/agent-note-hard-disable-phone-home-collectors-in-shipped-base/consequences:
+  en: d26e6136a73e9915
+  zh: c1cbdb0a9b38c7b6
+/agent-note-hard-disable-phone-home-collectors-in-shipped-base/testing:
+  en: f8052ef7f62ffa4d
+  zh: 89b5fbc6cf5ca45f

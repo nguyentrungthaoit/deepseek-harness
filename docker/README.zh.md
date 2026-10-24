@@ -141,6 +141,13 @@ docker push nguyentrungthaoit/dsh:latest
 
 `DSH_CLIENT_COMMIT_HASH` 是 7–40 位十六进制 commit（Docker context 不包含 `.git`）。
 
+出口代理（Squid）镜像基于 Ubuntu 24.04 软件包构建，因为 `ubuntu/squid:latest` 标签已不再重建，缺少 2026 年的 Squid 安全修复。它可直接替换 `ubuntu/squid`：同样的 3128 端口、同样的 `/etc/squid/squid.conf`，日志输出到 stdout。请定期重建以获取新的修复：
+
+```sh
+docker build -t nguyentrungthaoit/dsh-squid:6.14 docker/squid
+docker push nguyentrungthaoit/dsh-squid:6.14
+```
+
 ## 镜像里的 shell
 
 容器带有 `bash`、`git`、`curl`、`jq`、`rg`（ripgrep）、`make`、`sqlite3`、`zip`/`unzip`、`xz`、`file`、`less`、`ps` 和 `tini`（PID 1，转发 SIGTERM 并回收子进程）。`PATH` 上的 `python3` 和 `pip` 是 venv `/opt/dsh-py`，已安装 `python-docx` 1.2.0、`openpyxl` 3.1.5、`pypdf` 6.19.0、`pandas` 2.3.3 和 `matplotlib` 3.10.7。Agent 在需要读取 `.docx`、`.xlsx` 或 PDF 文本时调用 `python3`。

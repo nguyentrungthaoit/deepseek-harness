@@ -141,6 +141,13 @@ docker push nguyentrungthaoit/dsh:latest
 
 `DSH_CLIENT_COMMIT_HASH` là commit 7–40 hex (context Docker không gồm `.git`).
 
+Image proxy egress (Squid) build từ gói Ubuntu 24.04 vì tag `ubuntu/squid:latest` không còn được build lại và thiếu các bản vá Squid năm 2026. Dùng thay `ubuntu/squid` với cùng cổng 3128, cùng `/etc/squid/squid.conf`, log ra stdout. Build lại định kỳ để nhận bản vá mới:
+
+```sh
+docker build -t nguyentrungthaoit/dsh-squid:6.14 docker/squid
+docker push nguyentrungthaoit/dsh-squid:6.14
+```
+
 ## Shell trong image
 
 Container có `bash`, `git`, `curl`, `jq`, `rg` (ripgrep), `make`, `sqlite3`, `zip`/`unzip`, `xz`, `file`, `less`, `ps` và `tini` (PID 1, chuyển SIGTERM và thu process con). `python3` và `pip` trên `PATH` là venv `/opt/dsh-py`, đã cài `python-docx` 1.2.0, `openpyxl` 3.1.5, `pypdf` 6.19.0, `pandas` 2.3.3 và `matplotlib` 3.10.7. Agent gọi `python3` khi cần đọc `.docx`, `.xlsx` hoặc chữ trong PDF.
