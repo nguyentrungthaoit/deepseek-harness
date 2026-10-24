@@ -18,11 +18,12 @@
 import { Client, type Transport } from '@modelcontextprotocol/client'
 import type { Context } from '@deepseek-ai/cordis'
 import { assertNever, type JsonValue } from '@deepseek-ai/dsh-util-values'
+import type { McpConnectionStatus, McpFailureReason, McpRetryOutcome, McpServerInfo } from '@deepseek-ai/dsh-mcp-manager/types'
 import type { ServerContext } from './server-context.ts'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
-import { createTransport } from './transport.ts'
+import { createTransport, PidStdioClientTransport } from './transport.ts'
 import { syncTools } from './tools.ts'
-import type { ToolBridgeOptions, ToolDisposers } from './tools.ts'
+import type { McpToolInfo, ToolBridgeOptions, ToolDisposers } from './tools.ts'
 import type { Config } from './index.ts'
 
 /** Automatic reconnect policy for one MCP server connection. */
@@ -99,6 +100,18 @@ export interface ConnectionOutcome {
   error?: unknown
 }
 
+/** Why a supervised connection stopped connecting on its own. */
+export type ConnectionFailure = McpFailureReason
+
+/** Supervisor state as status consumers see it; the one definition lives in `dsh-mcp-manager`. */
+export type ConnectionStatus = McpConnectionStatus
+
+/** Name and version the server reported during initialization. */
+export type ServerInfo = McpServerInfo
+
+/** Result of {@link ConnectionHandle.retry}. */
+export type RetryOutcome = McpRetryOutcome
+
 /** Handle for one plugin instance's supervised connection. */
 export interface ConnectionHandle extends ServerContext {
   /**
@@ -110,9 +123,43 @@ export interface ConnectionHandle extends ServerContext {
   /**
    * Stop reconnection, close the negotiating transport or live client, wait
    * for the in-flight attempt and queued tool syncs to quiesce, then
-   * unregister every tool this server still owns.
+   * unregister every tool this server still owns. An unconfirmed close
+   * records the child PID in {@link status} and notifies subscribers.
    */
   dispose(): Promise<void>
+  /**
+   * Read the supervisor state.
+   * @returns the current phase with its attempt, timing, and failure details.
+   */
+  status(): ConnectionStatus
+  /**
+   * Read the registered tool generation.
+   * @returns the listed tools, empty while no generation is registered.
+   */
+  tools(): readonly McpToolInfo[]
+  /**
+   * Read the identity of the last connected server.
+   * @returns the reported name and version, or undefined before the first connection.
+   */
+  serverInfo(): ServerInfo | undefined
+  /**
+   * Observe status, tool, and orphan changes.
+   * @param listener - called synchronously after each change.
+   * @returns a function that stops the observation.
+   */
+  subscribe(listener: () => void): () => void
+  /**
+   * Start a fresh attempt budget now, from `backoff` or a stopped state the
+   * supervisor can leave without overlapping server processes.
+   * @returns `started`, `busy` while connecting, connected, or closing,
+   * `disposed` after disposal, or `needs-restart` after an unconfirmed close.
+   */
+  retry(): RetryOutcome
+}
+
+/** PID of a child spawned by this package's stdio transport, kept after close. */
+function childPid(transport: Transport | undefined): number | undefined {
+  return transport instanceof PidStdioClientTransport ? transport.spawnedPid : undefined
 }
 
 /**
@@ -148,6 +195,8 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
   let closeClient: (() => Promise<boolean>) | undefined
   /** Live tool registrations owned by this server; only {@link enqueueSync} and dispose swap it. */
   let disposers: ToolDisposers = new Map()
+  /** Tool listing of the current generation, kept beside {@link disposers}. */
+  let tools: McpToolInfo[] = []
   let reconnectTimer: NodeJS.Timeout | undefined
   /** Consecutive failed connection attempts within the current outage. */
   let failedAttempts = 0
@@ -155,6 +204,23 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
   let connectedAt: number | undefined
   /** The real error from the first connection attempt, for startup-await diagnostics. */
   let firstAttemptError: unknown
+  let phase: ConnectionStatus['state'] = 'connecting'
+  let failure: ConnectionFailure = 'attempts-exhausted'
+  let lastError: string | undefined
+  let retryAt = 0
+  let orphanPid: number | undefined
+  let info: ServerInfo | undefined
+  /** Transport of the newest generation, read for its child PID during disposal. */
+  let currentTransport: Transport | undefined
+  const listeners = new Set<() => void>()
+  function changed(): void {
+    for (const listener of [...listeners]) listener()
+  }
+  function stop(reason: ConnectionFailure): void {
+    phase = 'failed'
+    failure = reason
+    changed()
+  }
 
   /** A generation may act only while it is the current one on a live plugin. */
   const isCurrent = (generation: Client): boolean => !disposed && client === generation
@@ -169,7 +235,8 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
   function enqueueSync(generation: Client, syncOpts: ToolBridgeOptions = opts): Promise<void> {
     const run = syncChain.then(async () => {
       if (!isCurrent(generation)) return
-      disposers = await syncTools(generation, ctx, syncOpts, disposers)
+      ;({ disposers, tools } = await syncTools(generation, ctx, syncOpts, disposers))
+      changed()
     })
     // The chain tail must survive a failed sync; the enqueuing caller owns reporting.
     syncChain = run.catch(() => {})
@@ -185,12 +252,14 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
   }
 
   /** Decide retry ownership after a failed connection's close barrier settles. */
-  function settleFailedGeneration(generation: Client, quiesced: boolean): void {
+  function settleFailedGeneration(generation: Client, quiesced: boolean, pid: number | undefined): void {
     if (!isCurrent(generation)) return
     if (!quiesced) {
       client = undefined
       closeClient = undefined
+      orphanPid = pid
       ctx.logger.error(`${label}: failed generation could not confirm transport closure — reconnect stopped to avoid overlapping server processes; reload the plugin or restart the Host to retry`)
+      stop('closure-unconfirmed')
       return
     }
     generationDown(generation)
@@ -215,6 +284,7 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
         ? 'connection lost and reconnect is disabled — registered tools will fail until an HMR reload or Host restart'
         : 'connection failed and reconnect is disabled — no tools were registered; reload the plugin or restart the Host to connect'
       ctx.logger.error(`${label}: ${message}`)
+      stop('reconnect-disabled')
       return
     }
     // A connection that stayed up past the stability window (= maxDelayMs, the
@@ -228,9 +298,12 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
       syncChain = syncChain.then(() => {
         for (const dispose of disposers.values()) dispose()
         disposers = new Map()
+        tools = []
         serverInstructions = ''
+        changed()
       })
       ctx.logger.error(`${label}: giving up after ${policy.maxAttempts} consecutive failed reconnect attempts — tools unregistered; reload the plugin or restart the Host to reconnect`)
+      stop('attempts-exhausted')
       return
     }
     const delayMs = Math.min(policy.maxDelayMs, policy.initialDelayMs * 2 ** (failedAttempts - 1))
@@ -242,6 +315,9 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
     }, delayMs)
     // An armed reconnect timer must never hold the process open on its own.
     reconnectTimer.unref()
+    phase = 'backoff'
+    retryAt = Date.now() + delayMs
+    changed()
   }
 
   /**
@@ -276,6 +352,9 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
     const hasClosed = (): boolean => closeObserved
     client = generation
     closeClient = closeGeneration
+    currentTransport = undefined
+    phase = 'connecting'
+    changed()
     generation.onclose = () => {
       closeObserved = true
       closed.resolve()
@@ -305,6 +384,7 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
     let instructions: string
     try {
       transport = createTransport(config)
+      currentTransport = transport
       await generation.connect(transport)
       if (hasClosed()) {
         attemptSettled = true
@@ -325,10 +405,23 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
       if (firstAttemptError === undefined) firstAttemptError = error
       // Disposal clears current ownership before it closes the generation, so
       // only a live supervisor reports an attempt failure.
-      if (isCurrent(generation)) ctx.logger.warn(`${label}: connection attempt failed: ${String(error)}`)
+      if (isCurrent(generation)) {
+        ctx.logger.warn(`${label}: connection attempt failed: ${String(error)}`)
+        lastError = String(error)
+        phase = 'closing'
+        changed()
+      }
       const quiesced = await closeGeneration()
       attemptSettled = true
-      settleFailedGeneration(generation, quiesced)
+      const pid = childPid(transport)
+      settleFailedGeneration(generation, quiesced, pid)
+      if (!quiesced && pid !== undefined) {
+        // A close reported after the barrier gave up proves the child is gone.
+        void closed.promise.then(() => {
+          orphanPid = undefined
+          changed()
+        })
+      }
       return
     }
     attemptSettled = true
@@ -339,6 +432,11 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
     if (!isCurrent(generation)) return
     serverInstructions = instructions
     connectedAt = Date.now()
+    const version = generation.getServerVersion()
+    info = version === undefined ? undefined : { name: version.name, version: version.version }
+    lastError = undefined
+    phase = 'connected'
+    changed()
     if (failedAttempts > 0) ctx.logger.info(`${label}: reconnected and re-synced tools (attempt ${failedAttempts}/${policy.maxAttempts})`)
   }
 
@@ -385,6 +483,41 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
         }
       },
     },
+    status(): ConnectionStatus {
+      switch (phase) {
+        case 'connecting': return { state: 'connecting', attempt: failedAttempts + 1 }
+        case 'connected': return { state: 'connected', since: connectedAt as number }
+        case 'closing': return { state: 'closing' }
+        case 'backoff':
+          return { state: 'backoff', attempt: failedAttempts, maxAttempts: policy.maxAttempts, retryAt,
+            ...lastError === undefined ? {} : { lastError } }
+        case 'failed':
+          return { state: 'failed', reason: failure,
+            ...lastError === undefined ? {} : { lastError }, ...orphanPid === undefined ? {} : { orphanPid } }
+        /* v8 ignore next 2 -- phase is the closed state union */
+        default:
+          return assertNever(phase)
+      }
+    },
+    tools: () => tools,
+    serverInfo: () => info,
+    subscribe(listener) {
+      listeners.add(listener)
+      return () => { listeners.delete(listener) }
+    },
+    retry(): RetryOutcome {
+      if (disposed) return 'disposed'
+      if (phase === 'failed' && failure === 'closure-unconfirmed') return 'needs-restart'
+      if (phase !== 'backoff' && phase !== 'failed') return 'busy'
+      if (reconnectTimer !== undefined) {
+        clearTimeout(reconnectTimer)
+        reconnectTimer = undefined
+      }
+      failedAttempts = 0
+      connectedAt = undefined
+      settling = connectGeneration(false)
+      return 'started'
+    },
     async dispose(): Promise<void> {
       disposed = true
       serverInstructions = ''
@@ -397,6 +530,8 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
       closeClient = undefined
       if (close !== undefined && !await close()) {
         ctx.logger.error(incompleteDisposalMessage)
+        orphanPid = childPid(currentTransport)
+        stop('closure-unconfirmed')
       }
       // Quiesce, don't just request it: the in-flight attempt enqueues its
       // sync before settling, so awaiting both leaves `disposers` final.
@@ -404,6 +539,7 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
       await syncChain
       for (const dispose of disposers.values()) dispose()
       disposers = new Map()
+      tools = []
     },
   }
 }

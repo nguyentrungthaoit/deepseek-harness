@@ -33,6 +33,7 @@ const { mockConnect, mockClose, mockListTools, mockCallTool, mockSetNotification
     }
     getServerCapabilities = () => ({ tools: {} })
     getInstructions(): string | undefined { return undefined }
+    getServerVersion(): { name: string; version: string } | undefined { return { name: 'mock-server', version: '1.0.0' } }
   }
   return { mockConnect, mockClose, mockListTools, mockCallTool, mockSetNotificationHandler, MockClient }
 })

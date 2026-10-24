@@ -7,7 +7,7 @@ WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@11.7.0 --activate
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends python3 make g++ git ca-certificates \
+  && apt-get install -y --no-install-recommends python3 make g++ git ca-certificates musl-tools \
   && rm -rf /var/lib/apt/lists/*
 
 COPY . .
@@ -19,8 +19,12 @@ ENV DSH_CLIENT_COMMIT_HASH=${DSH_CLIENT_COMMIT_HASH}
 ENV DSH_CLIENT_BUILD_PROFILE=official
 ENV DSH_CLIENT_TITLE="DeepSeek Harness"
 
+# `pnpm run build` builds only the host Node-API addon. The full native build also
+# produces the static musl `landlock-run` launcher, the sandbox fallback when the
+# runtime lacks bubblewrap; the launcher is not tracked in git.
 RUN pnpm install --frozen-lockfile \
-  && pnpm run build
+  && pnpm run build \
+  && pnpm exec tsx native/system/scripts/build.ts
 
 FROM node:22.19-bookworm-slim AS runtime
 
@@ -29,6 +33,7 @@ WORKDIR /app
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
     bash \
+    bubblewrap \
     ca-certificates \
     curl \
     git \

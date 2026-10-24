@@ -31,6 +31,7 @@ const { mockConnect, mockClose, mockListTools, mockCallTool, mockSetNotification
     close = mockClose
     getServerCapabilities = () => ({ tools: {} })
     getInstructions(): string | undefined { return undefined }
+    getServerVersion(): { name: string; version: string } | undefined { return { name: 'mock-server', version: '1.0.0' } }
     listResources = async () => ({ resources: [] })
     listTools = mockListTools
     callTool = mockCallTool
@@ -613,5 +614,180 @@ describe('resolveReconnectPolicy', () => {
     const ctx = await mountRegistry()
     await expect(apply(ctx, stdioConfig({ initialDelayMs: 100, maxDelayMs: 5 })))
       .rejects.toThrow(/initialDelayMs must be less than or equal to maxDelayMs/)
+  })
+})
+
+describe('supervisor status and manual retry', () => {
+  let ctx: Context
+
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    instances.length = 0
+    mockConnect.mockResolvedValue(undefined)
+    mockClose.mockImplementation(function (this: { onclose?: () => void }) {
+      this.onclose?.()
+      return Promise.resolve()
+    })
+    mockListTools.mockResolvedValue(listing('remote'))
+    ctx = await mountRegistry()
+    captureLogs(ctx)
+  })
+
+  function start(reconnect?: Config['reconnect']) {
+    const config = stdioConfig(reconnect)
+    const handle = startConnection(ctx, config, resolveReconnectPolicy(config.reconnect, 'reconnect'))
+    const seen: string[] = []
+    const unsubscribe = handle.subscribe(() => { seen.push(handle.status().state) })
+    return { handle, seen, unsubscribe }
+  }
+
+  it('reports the connected server, its tools, and each transition to subscribers', async () => {
+    const { handle, seen } = start()
+    try {
+      await handle.ready
+      expect(handle.status()).toEqual({ state: 'connected', since: expect.any(Number) as number })
+      expect(handle.serverInfo()).toEqual({ name: 'mock-server', version: '1.0.0' })
+      expect(handle.tools()).toEqual([{ rawName: 'remote', publicName: 'mcp__srv__remote', description: '' }])
+      expect(seen).toContain('connected')
+      expect(handle.retry()).toBe('busy')
+    } finally {
+      await handle.dispose()
+    }
+  })
+
+  it('reports backoff with the attempt error, then a fresh budget on retry', async () => {
+    vi.useFakeTimers()
+    mockConnect.mockRejectedValueOnce(new Error('initialize failed'))
+    const { handle } = start({ initialDelayMs: 1_000, maxDelayMs: 1_000, maxAttempts: 3 })
+    try {
+      await handle.ready
+      await vi.advanceTimersByTimeAsync(0)
+      expect(handle.status()).toEqual({
+        state: 'backoff', attempt: 1, maxAttempts: 3, retryAt: expect.any(Number) as number, lastError: 'Error: initialize failed',
+      })
+      expect(handle.retry()).toBe('started')
+      await vi.waitFor(() => { expect(handle.status().state).toBe('connected') })
+      await vi.advanceTimersByTimeAsync(5_000)
+      expect(instances).toHaveLength(2)
+    } finally {
+      await handle.dispose()
+      vi.useRealTimers()
+    }
+  })
+
+  it('stops after the attempt budget and reconnects on retry after the give-up cleanup', async () => {
+    vi.useFakeTimers()
+    const { handle } = start({ initialDelayMs: 1, maxDelayMs: 1, maxAttempts: 1 })
+    try {
+      await handle.ready
+      expect(ctx.tools.get('mcp__srv__remote')).toBeDefined()
+      mockConnect.mockRejectedValue(new Error('server gone'))
+      instances[0]!.onclose?.()
+      await vi.advanceTimersByTimeAsync(50)
+      expect(handle.status()).toEqual({ state: 'failed', reason: 'attempts-exhausted', lastError: 'Error: server gone' })
+      expect(handle.tools()).toEqual([])
+      mockConnect.mockResolvedValue(undefined)
+      expect(handle.retry()).toBe('started')
+      await vi.waitFor(() => { expect(handle.status().state).toBe('connected') })
+      expect(ctx.tools.get('mcp__srv__remote')).toBeDefined()
+      expect(handle.tools()).toHaveLength(1)
+    } finally {
+      await handle.dispose()
+      vi.useRealTimers()
+    }
+  })
+
+  it('stops when reconnect is disabled and still accepts a manual retry', async () => {
+    mockConnect.mockRejectedValueOnce(new Error('refused'))
+    const { handle } = start({ enabled: false })
+    try {
+      await handle.ready
+      expect(handle.status()).toEqual({ state: 'failed', reason: 'reconnect-disabled', lastError: 'Error: refused' })
+      expect(handle.retry()).toBe('started')
+      await vi.waitFor(() => { expect(handle.status().state).toBe('connected') })
+    } finally {
+      await handle.dispose()
+    }
+  })
+
+  it('refuses retry while connecting and while a failed attempt is closing', async () => {
+    vi.useFakeTimers()
+    const gate: PromiseWithResolvers<void> = Promise.withResolvers()
+    mockConnect.mockImplementationOnce(() => gate.promise)
+    mockClose.mockResolvedValue(undefined)
+    const { handle, seen } = start()
+    try {
+      await vi.advanceTimersByTimeAsync(0)
+      expect(handle.status()).toEqual({ state: 'connecting', attempt: 1 })
+      expect(handle.retry()).toBe('busy')
+      gate.reject(new Error('initialize failed'))
+      await vi.advanceTimersByTimeAsync(0)
+      expect(handle.status()).toEqual({ state: 'closing' })
+      expect(handle.retry()).toBe('busy')
+      await vi.advanceTimersByTimeAsync(5_000)
+      await handle.ready
+      expect(handle.status()).toEqual({ state: 'failed', reason: 'closure-unconfirmed', lastError: 'Error: initialize failed' })
+      expect(handle.retry()).toBe('needs-restart')
+      expect(seen).toEqual(['closing', 'failed'])
+      expect(instances).toHaveLength(1)
+    } finally {
+      gate.resolve()
+      await handle.dispose()
+      vi.useRealTimers()
+    }
+  })
+
+  it('refuses retry after disposal and stops notifying unsubscribed listeners', async () => {
+    const { handle, seen, unsubscribe } = start()
+    await handle.ready
+    unsubscribe()
+    const before = seen.length
+    await handle.dispose()
+    expect(handle.retry()).toBe('disposed')
+    expect(seen).toHaveLength(before)
+    expect(instances).toHaveLength(1)
+  })
+})
+
+describe('supervisor status details', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    instances.length = 0
+    mockConnect.mockReset()
+    mockConnect.mockResolvedValue(undefined)
+    mockClose.mockImplementation(function (this: { onclose?: () => void }) {
+      this.onclose?.()
+      return Promise.resolve()
+    })
+    mockListTools.mockResolvedValue(listing('remote'))
+  })
+
+  it('reports no server identity when the server sent none', async () => {
+    const ctx = await mountRegistry()
+    const spy = vi.spyOn(MockClient.prototype, 'getServerVersion').mockReturnValue(undefined)
+    const config = stdioConfig()
+    const handle = startConnection(ctx, config, resolveReconnectPolicy(undefined, 'reconnect'))
+    try {
+      await handle.ready
+      expect(handle.status().state).toBe('connected')
+      expect(handle.serverInfo()).toBeUndefined()
+    } finally {
+      spy.mockRestore()
+      await handle.dispose()
+    }
+  })
+
+  it('reports a lost connection with reconnect disabled without an attempt error', async () => {
+    const ctx = await mountRegistry()
+    captureLogs(ctx)
+    const config = stdioConfig({ enabled: false })
+    const handle = startConnection(ctx, config, resolveReconnectPolicy(config.reconnect, 'reconnect'))
+    try {
+      await handle.ready
+      instances[0]!.onclose?.()
+      expect(handle.status()).toEqual({ state: 'failed', reason: 'reconnect-disabled' })
+    } finally {
+      await handle.dispose()
+    }
   })
 })

@@ -1,0 +1,64 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/client/ui-mcp-manager/README.md
+/:
+  en: c70bbdfd100d6753
+  zh: 4780ac65db6597e4
+/deepseek-ai-dsh-client-ui-mcp-manager:
+  en: 632f0a460ff18b7a
+  zh: 1f6df0d55c77331e
+/deepseek-ai-dsh-client-ui-mcp-manager/summary:
+  en: 15e9e8f62b1c5f10
+  zh: eeefb0cba8e3b24b
+/deepseek-ai-dsh-client-ui-mcp-manager/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 09388d293f9be9cb
+/deepseek-ai-dsh-client-ui-mcp-manager/use-this-package:
+  en: bd6609b0f91f4ed2
+  zh: e5c33acdcc124567
+/deepseek-ai-dsh-client-ui-mcp-manager/use-this-package/adding-and-editing-a-server:
+  en: 3447385d3c8c410d
+  zh: fe87bd7a4a7bc62c
+/deepseek-ai-dsh-client-ui-mcp-manager/use-this-package/deleting-a-server:
+  en: aa3fac1df5064246
+  zh: 280bfa279d718262
+/deepseek-ai-dsh-client-ui-mcp-manager/use-this-package/enabling-and-disabling:
+  en: 88ccbd7485640bfb
+  zh: 766c484ef19d03ee
+/deepseek-ai-dsh-client-ui-mcp-manager/use-this-package/reconnecting-a-server:
+  en: 4053913f5397b0a5
+  zh: 6753eb22c6954947
+/deepseek-ai-dsh-client-ui-mcp-manager/use-this-package/refresh:
+  en: 7112585d79084220
+  zh: 7bbea4a3381cc0a5
+/deepseek-ai-dsh-client-ui-mcp-manager/use-this-package/copy:
+  en: b32c7f6c61aa7097
+  zh: ff3f5480059bd240
+/deepseek-ai-dsh-client-ui-mcp-manager/understand-the-implementation:
+  en: f06731d093dd070c
+  zh: 60fb6de824bf0407
+/deepseek-ai-dsh-client-ui-mcp-manager/understand-the-implementation/registration:
+  en: bded1be995a95a71
+  zh: 60f70d46ce7efd12
+/deepseek-ai-dsh-client-ui-mcp-manager/understand-the-implementation/the-catalog:
+  en: a43a5f51e942dd59
+  zh: b6d2f73bec54c08f
+/deepseek-ai-dsh-client-ui-mcp-manager/understand-the-implementation/the-form-model:
+  en: 3a1e1d5e78e1947f
+  zh: 0df0658d5bd10922
+/deepseek-ai-dsh-client-ui-mcp-manager/further-exploration:
+  en: f4daed3b82ffe6c8
+  zh: 0a53483116008d68
+/deepseek-ai-dsh-client-ui-mcp-manager/model-experience:
+  en: 8dcc6c6fbfb567d2
+  zh: 43690ae350f1d6a7
+/deepseek-ai-dsh-client-ui-mcp-manager/model-experience/kv-cache-effect:
+  en: dca66df14c9d74f0
+  zh: 981089e1a004a8d0
+/deepseek-ai-dsh-client-ui-mcp-manager/known-limitations-and-deferred-work:
+  en: 60add51a2eba3c0d
+  zh: 7f3393ccf87e84ce
+/deepseek-ai-dsh-client-ui-mcp-manager/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: 3bb0c20c93f16f98

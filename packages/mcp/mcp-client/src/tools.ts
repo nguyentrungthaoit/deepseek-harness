@@ -35,6 +35,26 @@ export interface ToolBridgeOptions {
 /** State for one sync generation: the current set of disposers keyed by public name. */
 export type ToolDisposers = Map<string, () => void>
 
+/** One discovered tool as status consumers see it. */
+export interface McpToolInfo {
+  /** The MCP server's own tool name. */
+  rawName: string
+  /** The model-facing ToolRuntime name. */
+  publicName: string
+  /** Upstream display title, when the server provides one. */
+  title?: string
+  /** Upstream model-facing description; empty when absent. */
+  description: string
+}
+
+/** The registrations and tool listing of one synchronized generation. */
+export interface ToolGeneration {
+  /** Live registrations keyed by public name. */
+  disposers: ToolDisposers
+  /** Discovered tools of this generation; empty after a contained rollback. */
+  tools: McpToolInfo[]
+}
+
 /** Canonical MCP result exposed to PTC mode without discarding protocol blocks. */
 export type McpResult<Structured extends JsonValue = JsonValue> = {
   content: JsonValue[]
@@ -107,17 +127,20 @@ export function publicToolName(serverName: string, rawName: string): string {
  * @param opts - Bridge options: server namespace and per-call timeout.
  * @param previous - Disposer map from the prior sync generation; disposed
  *   during the swap phase (only after the fetch phase succeeded).
- * @returns A map of registered public tool names to their unregister
- *   disposers — the exact set of live registrations owned by this server.
+ * @returns The generation: a map of registered public tool names to their
+ *   unregister disposers (the exact set of live registrations owned by this
+ *   server) plus the discovered tool listing. Both are empty after a
+ *   contained rollback.
  */
 export async function syncTools(
   client: Client,
   ctx: Context,
   opts: ToolBridgeOptions,
   previous: ToolDisposers,
-): Promise<ToolDisposers> {
+): Promise<ToolGeneration> {
   // Phase 1: fetch and build the next generation without touching the registry.
   const definitions = new Map<string, ToolDefinition>()
+  const tools: McpToolInfo[] = []
   const response = client.getServerCapabilities()?.tools === undefined
     ? { tools: [] }
     : await client.listTools(undefined, { cacheMode: 'refresh' })
@@ -128,6 +151,12 @@ export async function syncTools(
         `mcp-client(${opts.serverName}): server listed tool "${tool.name}" more than once — invalid tool list`,
       )
     }
+    tools.push({
+      rawName: tool.name,
+      publicName,
+      ...tool.title !== undefined ? { title: tool.title } : {},
+      description: tool.description ?? '',
+    })
     definitions.set(publicName, createMcpToolDefinition(ctx, {
       name: publicName,
       rawName: tool.name,
@@ -156,9 +185,9 @@ export async function syncTools(
     for (const dispose of disposers.values()) dispose()
     ctx.logger.error(`mcp-client(${opts.serverName}): tool registration failed, no tools registered: ${String(error)}`)
     if (opts.registrationFailure === 'throw') throw error
-    return new Map()
+    return { disposers: new Map(), tools: [] }
   }
-  return disposers
+  return { disposers, tools }
 }
 
 /** Fields read from canonical content, including policy-owned value replacements. */

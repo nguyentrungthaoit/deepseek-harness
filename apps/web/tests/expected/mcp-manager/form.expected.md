@@ -1,0 +1,23 @@
+- heading "添加 MCP 服务器" [level=2]
+- group:
+  - text: 服务器名称
+  - textbox "服务器名称": fixture
+  - paragraph: 字母、数字、_ 或 -，最多 32 个字符
+  - tablist "传输方式":
+    - tab "stdio" [selected]
+    - tab "Streamable HTTP"
+  - text: 命令
+  - textbox "命令": <node>
+  - text: 参数，每行一个
+  - textbox "参数，每行一个": <fixture-server>
+  - text: 工作目录
+  - textbox "工作目录"
+  - group "环境变量":
+    - text: 环境变量
+    - textbox "名称": TOKEN
+    - textbox "值": mcp-e2e-secret-value
+    - button "删除此项"
+    - button "添加一项"
+  - group: 高级
+- button "取消"
+- button "保存"

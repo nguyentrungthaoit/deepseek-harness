@@ -66,6 +66,8 @@ Add one entry per server; nothing else is required. After the harness starts, th
 | `reconnect.maxDelayMs` | `30,000` | Backoff ceiling; also the uptime after which the attempt budget resets |
 | `reconnect.maxAttempts` | `10` | Consecutive failed attempts per outage before giving up |
 
+`env` and `headers` values are secrets: generic configuration surfaces such as Settings treat them as write-only and never return them.
+
 The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-mcp-client) is the exhaustive source for every accepted field.
 
 After startup, the server's tools appear as `mcp__<serverName>__<tool>` — try a prompt that uses one. If the initial connection fails, the harness still starts but no tools from that server appear, and an error is logged. Setting `failOnStartupError: true` rejects plugin activation; [app-boot's startup policy](../../boot/app-boot/README.md) still permits an optional MCP entry to fail without aborting the harness.
@@ -91,6 +93,8 @@ Images are supported when the current model accepts image input and the harness 
 The server's tools appear before the harness starts its first turn. When the server changes its tool list, the model's tool set updates automatically; if the update fails, the previous tool set keeps working.
 
 When a server connection drops — for example a local server process crashes — the plugin reconnects automatically with delays that double from 500 ms up to 30 s and then refreshes the tool set; reconnect progress is visible in the logs. During an outage the last known tools stay listed but calls to them fail until the server recovers. After ten consecutive failed attempts the server's tools are removed and reconnection stops until you reload the configuration or restart the harness; a server that stays connected for a while resets that counter. Set `reconnect.enabled: false` to disable automatic reconnection — tools then stay listed but fail until you reload. Editing the configuration entry reloads the server connection in place, and unchanged names stay unchanged.
+
+The supervisor tracks one state per connection: connecting, connected, closing (a failed attempt waiting for its transport to report closure), backoff, or failed with reason `reconnect-disabled`, `attempts-exhausted`, or `closure-unconfirmed`. It also keeps the last attempt error, the tool listing of the registered generation, the server name and version reported at initialization, and, for stdio, the PID of a child whose shutdown could not be confirmed; a later close report clears that PID. A manual retry from backoff or a stopped state starts a fresh attempt budget. It is refused while connecting, connected, or closing, and after an unconfirmed close, which needs a plugin reload to avoid overlapping server processes. This state is internal to the package and not exported.
 
 -----
 

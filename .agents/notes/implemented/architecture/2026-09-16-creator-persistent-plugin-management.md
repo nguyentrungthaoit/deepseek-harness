@@ -22,7 +22,7 @@ Historical Cordis sessions declare `retired-tools` coverage at their exact forma
 
 ## Alternatives considered
 
-Generic entry CRUD and an MCP-specific management API duplicate operations expressible as bundle files plus existing installation and enablement. They are unnecessary for prompt-driven installation. Moving generated-code versioning into Plugin Manager retains two lifecycles without providing ordinary package persistence.
+Generic entry CRUD and an MCP-specific management API duplicate operations expressible as bundle files plus existing installation and enablement. They are unnecessary for prompt-driven installation; human Web management of MCP rows is a separate surface, recorded in [Web management of MCP server rows](../feature/2026-10-21-web-mcp-server-management.md). Moving generated-code versioning into Plugin Manager retains two lifecycles without providing ordinary package persistence.
 
 ## Consequences
 

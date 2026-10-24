@@ -152,3 +152,5 @@ docker push nguyentrungthaoit/dsh:latest
 ## 运维说明
 
 Web UI 控制 agent（容器内的 shell/filesystem）。只在内网/VPN 上发布端口；如果暴露到外网，请放在带认证的反向代理后面。
+
+运行不可信文件的工具（如 `read_document`）总是在沙箱中运行。镜像安装了 `bubblewrap`（Linux 上的首选 runner），并预先构建了 `landlock-run` 启动器（备用 runner，需要内核启用 Landlock）。没有可用的 runner 时，工具会报告 `SANDBOX_UNAVAILABLE`，而不是在沙箱外运行。在 Docker Desktop（WSL2）上，两者在默认 seccomp 下都能运行；那里的 Landlock 只达到旧版 ABI（`partially enforced`）。

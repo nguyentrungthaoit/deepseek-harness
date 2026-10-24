@@ -1,0 +1,57 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "lib/types"
+  },
+  "include": [
+    "src"
+  ],
+  "references": [
+    {
+      "path": "../../../vendor/cordis"
+    },
+    {
+      "path": "../../../vendor/loader"
+    },
+    {
+      "path": "../../../vendor/schemastery"
+    },
+    {
+      "path": "../../../vendor/timer"
+    },
+    {
+      "path": "../../boot/app-boot"
+    },
+    {
+      "path": "../../settings/settings"
+    },
+    {
+      "path": "../../boot/config-editor"
+    },
+    {
+      "path": "../../boot/hmr"
+    },
+    {
+      "path": "../../typert/protocol"
+    },
+    {
+      "path": "../../core/scope"
+    },
+    {
+      "path": "../../util/brand"
+    },
+    {
+      "path": "../../host/plugin-inventory"
+    },
+    {
+      "path": "../../util/values"
+    },
+    {
+      "path": "../../core/tools"
+    },
+    {
+      "path": "../../core/system-prompt"
+    }
+  ]
+}

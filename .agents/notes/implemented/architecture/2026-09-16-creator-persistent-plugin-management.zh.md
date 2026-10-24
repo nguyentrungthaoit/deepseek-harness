@@ -22,7 +22,7 @@ Desktop 通过启动器提供的 profile 信息传入内置 pnpm 入口与 Elect
 
 ## Alternatives considered
 
-通用条目增删改查和 MCP 专用管理 API 重复了组合包文件及现有安装、启停操作能够表达的能力，提示驱动的安装不需要这些接口。将生成代码的版本管理搬入 Plugin Manager 会保留两套生命周期，且无法提供普通包的持久化方式。
+通用条目增删改查和 MCP 专用管理 API 重复了组合包文件及现有安装、启停操作能够表达的能力，提示驱动的安装不需要这些接口；人工在 Web 中管理 MCP 行是另一个界面，记录在[在 Web 中管理 MCP 服务器行](../feature/2026-10-21-web-mcp-server-management.zh.md)。将生成代码的版本管理搬入 Plugin Manager 会保留两套生命周期，且无法提供普通包的持久化方式。
 
 ## Consequences
 

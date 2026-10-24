@@ -1,0 +1,28 @@
+- button "返回"
+- heading "fixture" [level=2]
+- text: stdio 本配置
+- button "重新连接" [disabled]
+- button "编辑"
+- button "删除"
+- text: 已连接
+- term: 传输方式
+- definition: stdio
+- term: 命令
+- definition:
+  - code: <node>
+- term: 参数，每行一个
+- definition:
+  - code: <fixture-server>
+- term: 环境变量
+- definition:
+  - list:
+    - listitem:
+      - code: TOKEN
+      - text: 已保存，留空则保持不变
+- term: 服务器
+- definition: fixture 1.0.0
+- heading "工具" [level=3]
+- list:
+  - listitem:
+    - code: mcp__fixture__echo
+    - text: Echo Echoes text.

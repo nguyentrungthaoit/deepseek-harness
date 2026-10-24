@@ -49,6 +49,16 @@ configuration(): Array<{ entry: Entry; inherited: Record<string, unknown>; overr
  * @returns Fulfillment after Loader reconciliation completes.
  */
 async edit( entry: Entry, change: (current: Record<string, unknown>, inherited: Record<string, unknown>) => Record<string, unknown>, ): Promise<void>
+
+/** Rewrite the profile patch document, including inserting and removing rows, then reconcile the Loader.
+ * A row that `change` inserts has no live Fiber yet, so its config is validated only by reconciliation: when a
+ * required id fails to activate, the previous file and composition are restored and the failure is rethrown.
+ * `__jsExpr` maps written by `change` become `!!js` scalars.
+ * @param change Mutate the parsed, comment-preserving patch document and its top-level sequence items; returns the
+ * row ids that must be active afterwards.
+ * @returns Diagnostics for entries that remain inactive after reconciliation.
+ */
+async rewrite(change: (document: Document.Parsed, items: YAMLSeq['items']) => readonly string[]): Promise<string[]>
 ```
 
 Source: [`packages/boot/config-editor/src/index.ts`](../../packages/boot/config-editor/src/index.ts)

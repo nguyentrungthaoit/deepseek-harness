@@ -62,6 +62,7 @@ export const SERVICE_PAGE: Record<string, string> = {
   profileContext: 'boot.md',
   hmr: 'boot.md',
   mcpResources: 'mcp.md',
+  mcpServers: 'mcp.md',
   agentLoop: 'core.md',
   agentDefaultModel: 'core.md',
   agentPresets: 'core.md',
@@ -232,6 +233,7 @@ export const EVENT_SCOPE_PAGE: Record<string, string> = {
   'goal': 'goal.md',
   'schedule': 'schedule.md',
   'llm': 'llm-streaming.md',
+  'mcp': 'mcp.md',
   'permission-presets': 'permission-presets.md',
   'session': 'session.md',
   'settings': 'settings.md',
@@ -809,6 +811,11 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   TypertPackageRecord: 'typert.md',
   TypertSchemaFilter: 'typert.md',
   TypertSchemaRecord: 'typert.md',
+  McpServerChange: 'mcp.md',
+  McpServerRegistration: 'mcp.md',
+  McpServerStatusProvider: 'mcp.md',
+  McpServerStatus: 'mcp.md',
+  McpConnectionStatus: 'mcp.md',
 }
 
 /** TypeScript lib and pinned framework types with no repository-owned data page. */
@@ -856,6 +863,8 @@ export const TYPE_LINK_EXEMPTIONS: Readonly<Record<string, string>> = {
   McpResourceProvider: 'scoped resource provider is owned by packages/mcp/mcp-resources/README.md',
   'z.ZodType': 'Zod response validation API is owned by https://zod.dev/packages/zod',
   Socket: 'Node.js byte stream API is owned by https://nodejs.org/api/net.html#class-netsocket',
+  'Document.Parsed': 'comment-preserving YAML document API is owned by https://eemeli.org/yaml/#documents',
+  YAMLSeq: 'YAML sequence node API is owned by https://eemeli.org/yaml/#collections',
   z: 'schemastery schema constructor is owned by vendor/schemastery (vendored upstream)',
   BeginCommandRequest: 'event-local request contract is owned by packages/client/ui-input-trigger/src/types.ts',
   InsertReferenceRequest: 'event-local request contract is owned by packages/client/ui-input-trigger/src/types.ts',

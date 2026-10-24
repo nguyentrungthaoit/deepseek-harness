@@ -10,6 +10,7 @@
 
 - [配置](#configuration)
 - [职责与作用域](#responsibilities-and-scope)
+- [Web 管理](#web-management)
 - [协议与结果](#protocol-and-results)
 - [资源与指令](#resources-and-instructions)
 - [资源提供方类型](#resource-provider-types)
@@ -38,13 +39,20 @@ MCP 服务器需要主动配置。在目标 Cordis 作用域中，为每台服�
 <a id="responsibilities-and-scope"></a>
 ## 职责与作用域
 
-客户端是每服务器一个的连接插件，也是 Harness 工具注册表的消费者。它不发布共享的 `ctx.mcp` 服务。外部服务器实现 MCP 操作；SDK 拥有协议交换；客户端将发现的工具适配到 Harness 执行过程。
+客户端是每服务器一个的连接插件，也是 Harness 工具注册表的消费者。它自身不发布服务；挂载 [`dsh-mcp-manager`](../../packages/mcp/mcp-manager/README.zh.md) 时，客户端把每个根作用域连接的状态报告给其 `ctx.mcpServers` 接缝。外部服务器实现 MCP 操作；SDK 拥有协议交换；客户端将发现的工具适配到 Harness 执行过程。
 
 `mcp-resources` 拥有共享资源工具，并在调用方作用域中选择提供方。每个 MCP 客户端通过自己的连接提供资源操作。作用域中的首个提供方启用本地共享工具，移除最后一个提供方时移除这些工具；继承的提供方仍然可见。服务独立于任何单一客户端拥有这些工具注册。只要可见的客户端条目保持激活，连接失败就不会移除共享资源工具。
 
 配置的 `serverName` 在注册作用域内标识服务器。同一作用域中的两个条目不能占用相同名称；不同 Agent 作用域可以复用该名称。公开工具名包含配置的服务器名称，因此不同服务器的同名工具仍可区分。注册副作用拥有名称和已发现工具；插件释放时关闭连接并移除其贡献。
 
 [原生 Cua Driver 提供方](../../packages/experimental/computer-use-cua-driver-native/README.zh.md) 复用客户端导出的结果适配器，无需打开 MCP 连接。桌面提供方选择属于[计算机使用子系统](computer-use.zh.md)。
+
+-----
+
+<a id="web-management"></a>
+## Web 管理
+
+Web MCP 界面通过 [`dsh-mcp-manager`](../../packages/mcp/mcp-manager/README.zh.md) 拥有的 `mcp` Remote 列出、创建、编辑、删除并重连服务器行；方法、密钥处理与限制由该包 README 定义。启用与停用某一行仍归 [Plugin Manager](../../packages/boot/plugin-manager/README.zh.md) 所有。[Agent Note](../../.agents/notes/implemented/feature/2026-10-21-web-mcp-server-management.zh.md) 记录了相关决策。
 
 -----
 
@@ -106,6 +114,7 @@ interface McpResourceProvider {
 ## 延伸阅读
 
 - [MCP 包组](../../packages/mcp/README.zh.md) — 包入口。
+- [MCP 管理器](../../packages/mcp/mcp-manager/README.zh.md) — 状态接缝与 Web `mcp` Remote。
 - [MCP 资源](../../packages/mcp/mcp-resources/README.zh.md) — 共享工具与资源提供方语义。
 - [资源可见性参考](../../packages/mcp/mcp-resources/README.zh.md) — profile 统一挂载及由已配置服务器决定的可见性。
 - [第三方记忆服务器](../user/guide/mcp-memory.zh.md) — 产品配置指南。
@@ -136,4 +145,44 @@ register(server: string, provider: McpResourceProvider): () => void
 ```
 
 Source: [`packages/mcp/mcp-resources/src/index.ts`](../../packages/mcp/mcp-resources/src/index.ts)
+
+<a id="ctxmcpservers--mcpserverregistration"></a>
+
+### `ctx.mcpServers` — `McpServerRegistration`
+
+The registration half of the status seam, the only part providers depend on.
+
+```ts cordis-catalog
+/**
+ * Register one connection for the Loader entry that owns it. Registrations
+ * from an Agent scope, or without an entry id, are ignored.
+ * @param entryId - raw Loader entry id of the registering plugin.
+ * @param provider - the connection's live status.
+ * @returns the effect disposer for this registration.
+ */
+register(entryId: string | undefined, provider: McpServerStatusProvider): () => void
+```
+
+Source: [`packages/mcp/mcp-manager/src/types.ts`](../../packages/mcp/mcp-manager/src/types.ts)
+
+<a id="mcp-events"></a>
+
+### `mcp/*` events
+
+<a id="mcpchange--emit"></a>
+
+#### `mcp/change` — emit
+
+A server row's status, tools, or configuration changed, or a connection registered or left.
+
+```ts cordis-catalog
+/**
+ * A server row's status, tools, or configuration changed, or a connection registered or left.
+ * @mode emit
+ * @param change - the affected row, when one is known, and what changed.
+ */
+'mcp/change'(change: McpServerChange): void
+```
+
+Source: [`packages/mcp/mcp-manager/src/types.ts`](../../packages/mcp/mcp-manager/src/types.ts)
 <!-- END GENERATED cordis-surface -->

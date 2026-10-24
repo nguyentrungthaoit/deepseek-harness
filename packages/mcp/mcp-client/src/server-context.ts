@@ -5,11 +5,13 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
+import type { Config } from './index.ts'
 import type { McpResourceProvider } from '@deepseek-ai/dsh-mcp-resources'
 import type {} from '@deepseek-ai/dsh-system-prompt'
+import type { McpServerStatusProvider } from '@deepseek-ai/dsh-mcp-manager/types'
 
-/** Connection-owned values used by the resource and prompt consumers. */
-export interface ServerContext {
+/** Connection-owned values used by the resource, prompt, and status consumers. */
+export interface ServerContext extends Omit<McpServerStatusProvider, 'serverName' | 'transport'> {
   /** Resource access through the current connection generation. */
   resources: McpResourceProvider
   /**
@@ -22,10 +24,17 @@ export interface ServerContext {
 /**
  * Contribute server context to the services enabled by this composition.
  * @param ctx - server plugin's registration scope and effect owner.
- * @param server - configured server identity.
- * @param connection - live resource operations and successful instruction snapshot.
+ * @param config - configured server identity and transport.
+ * @param connection - live resource operations, instruction snapshot, and status.
+ * @param entryId - raw Loader entry id of the owning plugin, when it has one.
  */
-export function registerServerContext(ctx: Context, server: string, connection: ServerContext): void {
+export function registerServerContext(
+  ctx: Context,
+  config: Pick<Config, 'serverName' | 'transport'>,
+  connection: ServerContext,
+  entryId: string | undefined,
+): void {
+  const server = config.serverName
   ctx.inject(['mcpResources'], (inner) => {
     inner.mcpResources.register(server, connection.resources)
   })
@@ -35,6 +44,17 @@ export function registerServerContext(ctx: Context, server: string, connection: 
       order: inner.systemPrompt.getSectionOrder('MCP_SERVERS'),
       interpolate: false,
       text: () => connection.instructions(),
+    })
+  })
+  ctx.inject(['mcpServers'], (inner) => {
+    inner.mcpServers.register(entryId, {
+      serverName: server,
+      transport: config.transport,
+      status: () => connection.status(),
+      tools: () => connection.tools(),
+      serverInfo: () => connection.serverInfo(),
+      subscribe: listener => connection.subscribe(listener),
+      retry: () => connection.retry(),
     })
   })
 }

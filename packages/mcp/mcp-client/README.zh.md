@@ -66,6 +66,8 @@ kind: "package-reference"
 | `reconnect.maxDelayMs` | `30,000` | 退避上限；同时是重置尝试预算所需的正常运行时长 |
 | `reconnect.maxAttempts` | `10` | 每次中断内连续失败尝试次数上限，超出后放弃 |
 
+`env` 与 `headers` 的值属于机密：Settings 等通用配置界面将其视为只写，永不返回。
+
 生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-mcp-client)是每个受支持字段的穷尽式真源。
 
 启动后，服务器的工具会以 `mcp__<serverName>__<tool>` 形式出现——试着用一条提示词调用其中一个。如果初始连接失败，harness 仍会启动，但该服务器的工具不会出现，并会记录一条错误。设置 `failOnStartupError: true` 会拒绝插件激活；[app-boot 的启动策略](../../boot/app-boot/README.zh.md)仍允许可选 MCP 配置项失败，而不中止 harness。
@@ -91,6 +93,8 @@ kind: "package-reference"
 服务器的工具会在 harness 开始首个轮次之前出现。服务器更改工具列表时，模型的工具集会自动更新；更新失败时，上一组工具继续可用。
 
 服务器连接断开时——例如本地服务器进程崩溃——插件会以从 500 ms 起逐次翻倍、上限 30 s 的延迟自动重连，并刷新工具集；重连进度在日志中可见。中断期间最后已知的工具仍会列出，但对它们的调用会失败，直到服务器恢复。连续失败十次后，该服务器的工具会被移除，重连停止，直到你重载配置或重启 harness；服务器持续连接一段时间后，该计数会重置。设置 `reconnect.enabled: false` 可禁用自动重连——此时工具在断开后仍会列出，但调用失败，直到你重载。编辑配置项会在原地重载服务器连接，未变的名称保持不变。
+
+监督器为每个连接维护一个状态：connecting（连接中）、connected（已连接）、closing（关闭中，即失败的尝试正在等待其传输报告关闭）、backoff（退避）或 failed（已失败），失败原因为 `reconnect-disabled`、`attempts-exhausted` 或 `closure-unconfirmed`。它还记录最近一次尝试的错误、已注册世代的工具列表、初始化时服务器报告的名称与版本，以及（对 stdio）无法确认关闭的子进程的 PID；之后若收到关闭报告，该 PID 会被清除。从 backoff 或停止状态手动重试会开始新的尝试预算；在 connecting、connected 或 closing 期间会被拒绝，未确认关闭之后也会被拒绝，此时需重载插件以避免服务器进程重叠。该状态仅在包内部使用，不对外导出。
 
 -----
 

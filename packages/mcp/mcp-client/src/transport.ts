@@ -23,6 +23,22 @@ function buildChildEnv(extra: Record<string, string>): Record<string, string> {
 }
 
 /**
+ * Stdio transport that remembers its child's PID. The SDK drops its process
+ * handle as soon as `close()` starts, so a supervisor that learns only later
+ * that shutdown was not confirmed reads the PID from here.
+ */
+export class PidStdioClientTransport extends StdioClientTransport {
+  /** PID of the spawned child once `start()` resolved; kept after close. */
+  spawnedPid: number | undefined
+
+  override async start(): Promise<void> {
+    await super.start()
+    /* v8 ignore next -- the SDK resolves start() only after the child spawned, so pid is set */
+    this.spawnedPid = this.pid ?? undefined
+  }
+}
+
+/**
  * Create an MCP transport from the resolved plugin config.
  *
  * @param config - Resolved plugin config discriminated on `transport`.
@@ -31,7 +47,7 @@ function buildChildEnv(extra: Record<string, string>): Record<string, string> {
 export function createTransport(config: Config): Transport {
   switch (config.transport) {
     case 'stdio':
-      return new StdioClientTransport({
+      return new PidStdioClientTransport({
         command: config.command,
         args: config.args,
         env: buildChildEnv(config.env),

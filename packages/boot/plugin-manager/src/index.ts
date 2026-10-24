@@ -13,7 +13,7 @@ import { TypertRemoteService, Remote } from '@deepseek-ai/dsh-typert-protocol'
 import { pluginEntryId, readPluginInventory } from '@deepseek-ai/dsh-host-plugin-inventory'
 import {
   readPluginMeta, readProfileManifest, resolveBundleDir, loadOverlayPatches, composeEntries,
-  reconcileProfilePatches, readProfilePatches, OPTIONAL_BUNDLES, bundlePatchPaths,
+  reconcileProfilePatches, readProfilePatches, flattenEntries, resolveEntryOwnership, OPTIONAL_BUNDLES, bundlePatchPaths,
   evaluatePluginCompatibility, readProfileCompatibility, readProfileVersionExemptions,
   setProfileVersionExemption, PROFILE_COMPATIBILITY_FILENAME,
 } from '@deepseek-ai/dsh-app-boot'
@@ -80,11 +80,6 @@ const RESTORED_FILES = ['package.json', 'pnpm-lock.yaml'] as const
 
 /** pnpm's colour escapes, which a JSON answer may be wrapped in. */
 const ANSI_SEQUENCE = /\x1b\[[0-9;]*m/g
-
-/** Flatten only the groups addressable by the profile's patch composer. */
-function flatten(rows: EntryOptions[]): EntryOptions[] {
-  return rows.flatMap(row => [row, ...(row.group && Array.isArray(row.config) ? flatten(row.config as EntryOptions[]) : [])])
-}
 
 /** Preserve the exact observed diagnostic, including non-Error failures. */
 function messageOf(error: unknown): string { return error instanceof Error ? error.message : String(error) }
@@ -254,21 +249,9 @@ export class PluginManager extends TypertRemoteService {
    */
   @Remote
   async listPlugins(): Promise<PluginInfo[]> {
-    const rows = flatten(composeEntries([readProfilePatches('dsh', this.profile)]))
+    const rows = flattenEntries(composeEntries([readProfilePatches('dsh', this.profile)]))
     const snapshot = await readPluginInventory(this.ctx)
-    return snapshot.entries.map((entry) => {
-      const actual = [...this.ctx.loader.entries()].find(row => row.id === entry.entryId)
-      const candidates = rows.filter(row => row.id === actual?.options.id)
-      const candidate = candidates[0]
-      if (protectedModules.has(entry.moduleName) || entry.entryId === this.ownerEntryId) {
-        return { ...entry, readOnlyReason: 'management-required' as const }
-      }
-      if (candidate === undefined || candidates.length > 1 || candidate.name !== entry.moduleName
-        || actual?.parent.tree.ctx.fiber.entry?.id !== 'include') {
-        return { ...entry, readOnlyReason: 'unaddressable' as const }
-      }
-      return { ...entry, patchId: candidate.id }
-    })
+    return resolveEntryOwnership(snapshot.entries, rows, this.ctx.loader.entries(), { protectedModules, ownerEntryId: this.ownerEntryId })
   }
 
   /** Read the profile's installed bundles, the bundles this dsh installation supplies, and the selected names that are not bundles.
@@ -661,7 +644,7 @@ export class PluginManager extends TypertRemoteService {
     }
     const rows: BundleRowInfo[] = []
     const packages = this.ctx.get('pluginPackages')
-    for (const row of flatten(composeEntries([patches.filter(item => item.insert !== undefined)]))) {
+    for (const row of flattenEntries(composeEntries([patches.filter(item => item.insert !== undefined)]))) {
       if (typeof row.id !== 'string' || typeof row.name !== 'string') continue
       const active = live.get(row.id)
       const entryId = active?.entryId
@@ -757,7 +740,7 @@ export class PluginManager extends TypertRemoteService {
     const info = bundleManifest(name, this.profile.dir, this.profile.installAnchor)
     if (info?.dsh?.bundle === undefined) return []
     const dir = resolveBundleDir('dsh', name, this.profile.installAnchor, this.profile.dir)
-    return flatten(composeEntries([bundlePatchPaths(dir, info.dsh.bundle).flatMap(file => loadOverlayPatches('dsh', file))]))
+    return flattenEntries(composeEntries([bundlePatchPaths(dir, info.dsh.bundle).flatMap(file => loadOverlayPatches('dsh', file))]))
   }
 
   private protectsManager(name: string): boolean {

@@ -152,3 +152,5 @@ Cách gắn thư mục skill nằm ở [cấu hình custom skill](../docs/user/g
 ## Lưu ý vận hành
 
 Web UI điều khiển agent (shell/filesystem trong container). Chỉ publish port trên mạng nội bộ/VPN; nếu expose ra ngoài hãy đặt reverse proxy có auth.
+
+Các tool chạy file không tin cậy, như `read_document`, luôn chạy trong sandbox. Image cài `bubblewrap` (runner đầu tiên trên Linux) và build sẵn launcher `landlock-run` (runner dự phòng, cần kernel bật Landlock). Không runner nào dùng được thì tool báo `SANDBOX_UNAVAILABLE` thay vì chạy không sandbox. Trên Docker Desktop (WSL2) cả hai đều chạy với seccomp mặc định; Landlock ở đó chỉ ở mức ABI cũ (`partially enforced`).

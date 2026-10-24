@@ -23,14 +23,20 @@ Save plugin configuration in the active profile’s patch and apply it immediate
 <a id="use-this-package"></a>
 ## Use this package
 
-Mount this service in a profile application with Loader and `profileContext`. It has no configuration fields.
+Mount this service in a profile application with Loader and `profileContext`.
 
 ```yaml
 - id: config-editor
   name: '@deepseek-ai/dsh-config-editor'
 ```
 
-Use [settings](../../settings/settings/README.md) for forms restricted to live fields. Callers that edit complete configuration can use `ctx.configEditor.edit()`; ordinary fields retain Loader’s normal lifecycle.
+| Field | Default | Meaning |
+|---|---|---|
+| `lockWaitMs` | `120000` | Maximum time in milliseconds a save waits for another writer’s profile lock. |
+
+A settings save can therefore wait up to `lockWaitMs` while [Plugin Manager](../plugin-manager/README.md) holds the lock, for example during a package install; a save that cannot acquire the lock in that time fails.
+
+Use [settings](../../settings/settings/README.md) for forms restricted to live fields. Callers that edit complete configuration can use `ctx.configEditor.edit()`; ordinary fields retain Loader’s normal lifecycle. `ctx.configEditor.rewrite(change)` rewrites the whole patch document: `change` receives the parsed, comment-preserving document and its top-level items, may insert or remove rows, and returns the ids that must be active afterwards. Maps with a single `__jsExpr` key are written as `!!js` expressions. A row that `change` inserts has no Fiber to validate against, so only reconciliation validates it; when a returned id does not activate, the file and composition are restored and the error is rethrown. `rewrite` returns diagnostics for entries that remain inactive.
 
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
@@ -38,7 +44,7 @@ Use [settings](../../settings/settings/README.md) for forms restricted to live f
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-The [editor](src/index.ts) reconciles external changes before deriving a candidate, locks the profile manifest alongside other profile operations, and atomically replaces its config override. It preserves YAML comments and `!!js` expressions outside replaced values. A failed reconciliation restores the prior document and reloads the prior patches.
+The [editor](src/index.ts) reconciles external changes before deriving a candidate, holds the profile file lock (`<profile>/package.json`) and then the HMR queue, the order Plugin Manager takes them in, for both `edit()` and `rewrite()`, and atomically replaces its config override. It preserves YAML comments and `!!js` expressions outside replaced values. A failed reconciliation restores the prior document and reloads the prior patches.
 
 Configuration reads share one composition for entries without profile config overrides. Overridden entries are composed separately with only their own override removed; profile inserts and other entries' overrides remain effective. Returned configs are detached, and compositions are not cached between reads.
 

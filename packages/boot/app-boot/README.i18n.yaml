@@ -33,8 +33,11 @@
   en: c4a301652b851ce9
   zh: 784871e19cd9db0a
 /deepseek-ai-dsh-app-boot/use-this-package/reading-plugin-display-metadata:
-  en: 98ef2935171952c0
-  zh: 8c160bdeffd68b0f
+  en: 783e2452cbe1fcec
+  zh: b1f753fa7127e1a8
+/deepseek-ai-dsh-app-boot/use-this-package/resolving-which-patch-row-owns-a-plugin-entry:
+  en: 51d11d2367036e51
+  zh: 11eae2c459b9076f
 /deepseek-ai-dsh-app-boot/use-this-package/startup-and-reload-failures:
   en: 09890e218ab49c84
   zh: e3d86597e7fb1adb
@@ -51,8 +54,8 @@
   en: f7bc3a8dd4b00bdd
   zh: 30098428aa769ad0
 /deepseek-ai-dsh-app-boot/understand-the-implementation/source-map:
-  en: 3da01827e3354655
-  zh: 06ccfaed83f65a76
+  en: 078c76c82c0dca43
+  zh: 01d4b9443d9e4f4b
 /deepseek-ai-dsh-app-boot/further-exploration:
   en: 401269cc5ea8593e
   zh: cd337c356b320565

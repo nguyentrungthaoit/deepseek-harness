@@ -1,0 +1,4 @@
+- heading "MCP servers" [level=1]
+- paragraph: See connection status and tools; add or change servers
+- button "Add server"
+- paragraph: No MCP servers configured

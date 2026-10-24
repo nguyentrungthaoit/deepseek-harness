@@ -23,14 +23,20 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用此包
 
-在具有 Loader 和 `profileContext` 的 profile 应用中挂载此服务。它没有配置字段。
+在具有 Loader 和 `profileContext` 的 profile 应用中挂载此服务。
 
 ```yaml
 - id: config-editor
   name: '@deepseek-ai/dsh-config-editor'
 ```
 
-使用 [settings](../../settings/settings/README.zh.md) 提供只编辑即时字段的表单。编辑完整配置的调用方可使用 `ctx.configEditor.edit()`；普通字段保留 Loader 的正常生命周期。
+| 字段 | 默认值 | 含义 |
+|---|---|---|
+| `lockWaitMs` | `120000` | 保存等待其他写入方释放 profile 锁的最长毫秒数。 |
+
+因此，当 [Plugin Manager](../plugin-manager/README.zh.md) 持有该锁（例如安装软件包期间）时，设置保存最多等待 `lockWaitMs`；在此时间内未获得锁的保存会失败。
+
+使用 [settings](../../settings/settings/README.zh.md) 提供只编辑即时字段的表单。编辑完整配置的调用方可使用 `ctx.configEditor.edit()`；普通字段保留 Loader 的正常生命周期。`ctx.configEditor.rewrite(change)` 重写整个 patch 文档：`change` 接收保留注释的已解析文档及其顶层条目，可插入或删除行，并返回之后必须处于活动状态的 id。仅含 `__jsExpr` 一个键的 map 写为 `!!js` 表达式。`change` 插入的行没有可供验证的 Fiber，只能通过应用阶段验证；返回的 id 未能激活时，恢复文件和组合结果并重新抛出错误。`rewrite` 返回仍处于非活动状态的条目的诊断。
 
 <a id="understand-the-implementation"></a>
 ## 理解实现
@@ -38,7 +44,7 @@ kind: "package-reference"
 <details>
 <summary>实现内部细节——点击展开</summary>
 
-[编辑器](src/index.ts) 在派生候选配置前应用外部更改，与其他 profile 操作共同锁定 profile manifest，并原子替换配置覆盖项。它保留替换值以外的 YAML 注释和 `!!js` 表达式。应用失败时恢复之前的文档并重新加载之前的 patch。
+[编辑器](src/index.ts) 在派生候选配置前应用外部更改，在 `edit()` 和 `rewrite()` 中先持有 profile 文件锁（`<profile>/package.json`），再持有 HMR 队列（与 Plugin Manager 的顺序相同），并原子替换配置覆盖项。它保留替换值以外的 YAML 注释和 `!!js` 表达式。应用失败时恢复之前的文档并重新加载之前的 patch。
 
 读取配置时，没有 profile config 覆盖项的条目共用一次组合结果。有覆盖项的条目分别组合，仅移除自身的覆盖项；profile 插入的条目和其他条目的覆盖项仍然生效。返回的配置为独立副本，组合结果不跨读取缓存。
 

@@ -20,6 +20,7 @@ const testToolSignal = new AbortController().signal
 
 interface MockTool {
   name: string
+  title?: string
   description?: string
   inputSchema: Record<string, unknown>
   outputSchema?: Record<string, unknown>
@@ -180,13 +181,19 @@ describe('syncTools', () => {
 
   it('registers tools under server-qualified public names', async () => {
     const client = createMockClient([
-      { name: 'greet', description: 'Say hello', inputSchema: { type: 'object', properties: { name: { type: 'string' } } } },
+      { name: 'greet', title: 'Greeter', description: 'Say hello', inputSchema: { type: 'object', properties: { name: { type: 'string' } } } },
       { name: 'add', description: 'Add numbers', inputSchema: { type: 'object', properties: {} } },
+      { name: 'bare', inputSchema: { type: 'object' } },
     ])
 
-    const disposers = await syncTools(client as never, ctx, defaultOpts, new Map())
+    const { disposers, tools } = await syncTools(client as never, ctx, defaultOpts, new Map())
 
-    expect(disposers.size).toBe(2)
+    expect(disposers.size).toBe(3)
+    expect(tools).toEqual([
+      { rawName: 'greet', publicName: 'mcp__srv__greet', title: 'Greeter', description: 'Say hello' },
+      { rawName: 'add', publicName: 'mcp__srv__add', description: 'Add numbers' },
+      { rawName: 'bare', publicName: 'mcp__srv__bare', description: '' },
+    ])
     expect(ctx.tools.get('mcp__srv__greet')).toBeDefined()
     expect(ctx.tools.get('mcp__srv__add')).toBeDefined()
     // Raw names are NOT registered.
@@ -237,7 +244,7 @@ describe('syncTools', () => {
 
   it('keeps the previous generation when the fetch phase fails', async () => {
     const client = createMockClient([{ name: 'stable', inputSchema: { type: 'object' } }])
-    const first = await syncTools(client as never, ctx, defaultOpts, new Map())
+    const { disposers: first } = await syncTools(client as never, ctx, defaultOpts, new Map())
     expect(ctx.tools.get('mcp__srv__stable')).toBeDefined()
 
     client.listTools.mockRejectedValue(new Error('network down'))
@@ -261,10 +268,11 @@ describe('syncTools', () => {
       { name: 'taken', inputSchema: { type: 'object' } },
     ])
 
-    const disposers = await syncTools(client as never, ctx, defaultOpts, new Map())
+    const { disposers, tools } = await syncTools(client as never, ctx, defaultOpts, new Map())
 
     // All-or-nothing: the non-conflicting tool is rolled back too.
     expect(disposers.size).toBe(0)
+    expect(tools).toEqual([])
     expect(ctx.tools.get('mcp__srv__free')).toBeUndefined()
     // The squatter is untouched.
     expect(ctx.tools.get('mcp__srv__taken')).toBeDefined()
@@ -275,12 +283,13 @@ describe('syncTools', () => {
       { name: 'old_tool', inputSchema: { type: 'object' } },
     ])
 
-    const firstDisposers = await syncTools(client as never, ctx, defaultOpts, new Map())
+    const { disposers: firstDisposers } = await syncTools(client as never, ctx, defaultOpts, new Map())
     expect(ctx.tools.get('mcp__srv__old_tool')).toBeDefined()
 
     client.listTools.mockResolvedValue({ tools: [{ name: 'new_tool', inputSchema: { type: 'object' } }], nextCursor: undefined })
-    const secondDisposers = await syncTools(client as never, ctx, defaultOpts, firstDisposers)
+    const { disposers: secondDisposers, tools: secondTools } = await syncTools(client as never, ctx, defaultOpts, firstDisposers)
 
+    expect(secondTools.map(tool => tool.rawName)).toEqual(['new_tool'])
     expect(ctx.tools.get('mcp__srv__old_tool')).toBeUndefined()
     expect(ctx.tools.get('mcp__srv__new_tool')).toBeDefined()
     expect(secondDisposers.size).toBe(1)
@@ -713,7 +722,7 @@ describe('tool execution', () => {
         [{ name: 'img', inputSchema: { type: 'object' } }],
         { content: [{ type: 'image', mimeType: 'image/png', data: 'AQ==' }] },
       )
-      const registrations = await syncTools(client as never, rich.ctx, defaultOpts, new Map())
+      const { disposers: registrations } = await syncTools(client as never, rich.ctx, defaultOpts, new Map())
       rich.ctx.on('tools/execute', async (_exec, next) => {
         const result = await next()
         if (result.isError) throw new Error('expected MCP success before dispatch replacement')

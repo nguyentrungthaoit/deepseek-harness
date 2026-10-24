@@ -1,0 +1,4 @@
+- heading "MCP 服务器" [level=1]
+- paragraph: 查看连接状态与工具，添加或修改服务器
+- button "添加服务器"
+- paragraph: 尚未配置 MCP 服务器

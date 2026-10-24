@@ -736,6 +736,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [{ name: 'entry', description: 'Current Loader entry, also used to detect replacement during the write.' }, { name: 'change', description: 'Derive a raw config from the current entry and its inherited layer.' }],
         returns: 'Fulfillment after Loader reconciliation completes.',
       },
+      {
+        signature: 'async rewrite(change: (document: Document.Parsed, items: YAMLSeq[\'items\']) => readonly string[]): Promise<string[]>',
+        description: 'Rewrite the profile patch document, including inserting and removing rows, then reconcile the Loader. A row that `change` inserts has no live Fiber yet, so its config is validated only by reconciliation: when a required id fails to activate, the previous file and composition are restored and the failure is rethrown. `__jsExpr` maps written by `change` become `!!js` scalars.',
+        parameters: [{ name: 'change', description: 'Mutate the parsed, comment-preserving patch document and its top-level sequence items; returns the row ids that must be active afterwards.' }],
+        returns: 'Diagnostics for entries that remain inactive after reconciliation.',
+      },
     ],
   },
   {
@@ -1507,6 +1513,19 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Register one server and expose resource tools while that scope has providers.',
         parameters: [{ name: 'server', description: 'configured server name, unique in this scope.' }, { name: 'provider', description: 'connection-owned resource operations.' }],
         returns: 'the effect disposer for this exact registration.',
+      },
+    ],
+  },
+  {
+    key: 'mcpServers',
+    summary: 'The registration half of the status seam, the only part providers depend on.',
+    description: 'The registration half of the status seam, the only part providers depend on.',
+    methods: [
+      {
+        signature: 'register(entryId: string | undefined, provider: McpServerStatusProvider): () => void',
+        description: 'Register one connection for the Loader entry that owns it. Registrations from an Agent scope, or without an entry id, are ignored.',
+        parameters: [{ name: 'entryId', description: 'raw Loader entry id of the registering plugin.' }, { name: 'provider', description: 'the connection\'s live status.' }],
+        returns: 'the effect disposer for this registration.',
       },
     ],
   },
@@ -4172,6 +4191,14 @@ export const EVENT_API: readonly EventApiEntry[] = [
     parameters: [{ name: 'options', description: 'the full request. A LOOP-built request carries the process-local {@link markAgentLoopRequest} identity and arrives deep-frozen (mutation throws): its content is a pure function of the session log (the reconstructability Agent Note), so listeners read it, never rewrite it. Hand-built calls do not carry that marker; callers own their request inputs and must keep them unchanged until the stream settles.' }],
   },
   {
+    name: 'mcp/change',
+    mode: 'emit',
+    signature: '\'mcp/change\'(change: McpServerChange): void',
+    summary: 'A server row\'s status, tools, or configuration changed, or a connection registered or left.',
+    description: 'A server row\'s status, tools, or configuration changed, or a connection registered or left.',
+    parameters: [{ name: 'change', description: 'the affected row, when one is known, and what changed.' }],
+  },
+  {
     name: 'permission-presets/catalog-changed',
     mode: 'emit',
     signature: '\'permission-presets/catalog-changed\'(): void',
@@ -5792,12 +5819,48 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type MatcherValue = string | number | boolean | null | RegExp | readonly (string | number | boolean | null)[];',
   },
   {
+    name: 'McpConnectionStatus',
+    declaration: 'export type McpConnectionStatus = {\n    state: \'connecting\';\n    attempt: number;\n} | {\n    state: \'connected\';\n    since: number;\n} | {\n    state: \'closing\';\n} | {\n    state: \'backoff\';\n    attempt: number;\n    maxAttempts: number;\n    retryAt: number;\n    lastError?: string;\n} | {\n    state: \'failed\';\n    reason: McpFailureReason;\n    lastError?: string;\n    orphanPid?: number;\n};',
+  },
+  {
+    name: 'McpFailureReason',
+    declaration: 'export type McpFailureReason = \'reconnect-disabled\' | \'attempts-exhausted\' | \'closure-unconfirmed\';',
+  },
+  {
     name: 'McpResourceProvider',
     declaration: 'export interface McpResourceProvider {\n    request(request: McpResourceRequest, exec: ToolExecution): Promise<JsonValue>;\n}',
   },
   {
     name: 'McpResourceRequest',
     declaration: 'export type McpResourceRequest = {\n    method: \'resources/list\' | \'resources/templates/list\';\n    cursor?: string;\n} | {\n    method: \'resources/read\';\n    uri: string;\n};',
+  },
+  {
+    name: 'McpRetryOutcome',
+    declaration: 'export type McpRetryOutcome = \'started\' | \'busy\' | \'disposed\' | \'needs-restart\';',
+  },
+  {
+    name: 'McpServerChange',
+    declaration: 'export interface McpServerChange {\n    entryId?: McpServerId;\n    reason: \'status\' | \'tools\' | \'config\' | \'registration\';\n}',
+  },
+  {
+    name: 'McpServerId',
+    declaration: 'export type McpServerId = PluginEntryId;',
+  },
+  {
+    name: 'McpServerInfo',
+    declaration: 'export interface McpServerInfo {\n    name: string;\n    version: string;\n}',
+  },
+  {
+    name: 'McpServerStatusProvider',
+    declaration: 'export interface McpServerStatusProvider {\n    readonly serverName: string;\n    readonly transport: McpTransport;\n    status(): McpConnectionStatus;\n    tools(): readonly McpToolView[];\n    serverInfo(): McpServerInfo | undefined;\n    subscribe(listener: () => void): () => void;\n    retry(): McpRetryOutcome;\n}',
+  },
+  {
+    name: 'McpToolView',
+    declaration: 'export interface McpToolView {\n    rawName: string;\n    publicName: string;\n    title?: string;\n    description: string;\n}',
+  },
+  {
+    name: 'McpTransport',
+    declaration: 'export type McpTransport = \'stdio\' | \'streamable-http\';',
   },
   {
     name: 'Message',

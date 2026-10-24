@@ -10,6 +10,7 @@ Model Context Protocol (MCP) connects the model to tools supplied by external se
 
 - [Configuration](#configuration)
 - [Responsibilities and scope](#responsibilities-and-scope)
+- [Web management](#web-management)
 - [Protocol and results](#protocol-and-results)
 - [Resources and instructions](#resources-and-instructions)
 - [Resource provider types](#resource-provider-types)
@@ -38,13 +39,20 @@ Protocol negotiation follows the SDK's supported revisions; there is no product 
 <a id="responsibilities-and-scope"></a>
 ## Responsibilities and scope
 
-The client is a per-server connection plugin and a consumer of the harness tool registry. It does not publish a shared `ctx.mcp` service. The external server implements MCP operations; the SDK owns protocol exchange; the client adapts discovered tools to harness execution.
+The client is a per-server connection plugin and a consumer of the harness tool registry. It publishes no service of its own; when [`dsh-mcp-manager`](../../packages/mcp/mcp-manager/README.md) is mounted, the client reports each root-scoped connection's status to its `ctx.mcpServers` seam. The external server implements MCP operations; the SDK owns protocol exchange; the client adapts discovered tools to harness execution.
 
 `mcp-resources` owns the shared resource tools and selects providers in the caller's scope. Each MCP client supplies resource operations through its own connection. The first provider in a scope enables the local shared tools, and removing the last removes them; inherited providers remain visible. The service owns these tool registrations independently of any one client. Connection failures do not remove shared resource tools while a visible client entry remains active.
 
 Configured `serverName` identifies a server in its registration scope. Two entries in that scope cannot reserve the same name; separate Agent scopes can reuse it. Public tool names include the configured server name, so equally named tools from different servers remain distinct. Registration effects own names and discovered tools; plugin disposal closes the connection and removes its contributions.
 
 The [native Cua Driver provider](../../packages/experimental/computer-use-cua-driver-native/README.md) shares the client's exported result adapter without opening an MCP connection. Desktop provider selection belongs to the [computer-use subsystem](computer-use.md).
+
+-----
+
+<a id="web-management"></a>
+## Web management
+
+The Web MCP screen lists, creates, edits, removes, and reconnects server rows through the `mcp` Remote that [`dsh-mcp-manager`](../../packages/mcp/mcp-manager/README.md) owns; the package README defines its methods, secret handling, and limits. Enabling and disabling a row stays with [Plugin Manager](../../packages/boot/plugin-manager/README.md). The [Agent Note](../../.agents/notes/implemented/feature/2026-10-21-web-mcp-server-management.md) records the decisions.
 
 -----
 
@@ -106,6 +114,7 @@ MCP prompt templates, human-input elicitation, task-based execution, and resourc
 ## Further reading
 
 - [MCP package group](../../packages/mcp/README.md) — package entry points.
+- [MCP manager](../../packages/mcp/mcp-manager/README.md) — status seam and the Web `mcp` Remote.
 - [MCP resources](../../packages/mcp/mcp-resources/README.md) — shared tools and resource-provider semantics.
 - [Resource visibility reference](../../packages/mcp/mcp-resources/README.md) — shared profile mounting and visibility from configured servers.
 - [Third-party memory servers](../user/guide/mcp-memory.md) — product configuration guide.
@@ -136,4 +145,44 @@ register(server: string, provider: McpResourceProvider): () => void
 ```
 
 Source: [`packages/mcp/mcp-resources/src/index.ts`](../../packages/mcp/mcp-resources/src/index.ts)
+
+<a id="ctxmcpservers--mcpserverregistration"></a>
+
+### `ctx.mcpServers` — `McpServerRegistration`
+
+The registration half of the status seam, the only part providers depend on.
+
+```ts cordis-catalog
+/**
+ * Register one connection for the Loader entry that owns it. Registrations
+ * from an Agent scope, or without an entry id, are ignored.
+ * @param entryId - raw Loader entry id of the registering plugin.
+ * @param provider - the connection's live status.
+ * @returns the effect disposer for this registration.
+ */
+register(entryId: string | undefined, provider: McpServerStatusProvider): () => void
+```
+
+Source: [`packages/mcp/mcp-manager/src/types.ts`](../../packages/mcp/mcp-manager/src/types.ts)
+
+<a id="mcp-events"></a>
+
+### `mcp/*` events
+
+<a id="mcpchange--emit"></a>
+
+#### `mcp/change` — emit
+
+A server row's status, tools, or configuration changed, or a connection registered or left.
+
+```ts cordis-catalog
+/**
+ * A server row's status, tools, or configuration changed, or a connection registered or left.
+ * @mode emit
+ * @param change - the affected row, when one is known, and what changed.
+ */
+'mcp/change'(change: McpServerChange): void
+```
+
+Source: [`packages/mcp/mcp-manager/src/types.ts`](../../packages/mcp/mcp-manager/src/types.ts)
 <!-- END GENERATED cordis-surface -->

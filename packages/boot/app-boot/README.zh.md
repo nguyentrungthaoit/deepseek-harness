@@ -84,6 +84,11 @@ profile 导入插件前，DSH 会检查其 `peerDependencies` 中对 `@deepseek-
 
 使用 `readPluginMeta(specifier, parentURL)` 或 `ctx.pluginPackages.metaOf(specifier, parentURL)` 读取已安装包的展示文本，无需导入或激活插件。查询使用完整包标识与调用方的解析基准，并遵循 Node exports。文件路径与文件 URL 不解析资源，直接返回无元信息。包根标识缺失的 locale 字段回退到可访问的 `package.json`；子路径标识从不读取 `package.json`。格式错误的元信息返回 `error` 诊断。结果保留翻译，由 Client 选择语言。即使 locale 文本完整，读取器也会加载图片 data URL：包根使用清单 `icon`，省略该字段时使用 `<包名>/icon`；子路径使用 `<标识>/icon`。图标出错时，保留有效文本并附上诊断。作者格式见[插件展示元信息](../../../docs/cookbook/adding-a-package.zh.md#plugin-display-metadata)。
 
+<a id="entry-ownership"></a>
+### 判定哪个 patch 行拥有插件条目
+
+`flattenEntries(rows)` 列出 profile patch 可寻址的已组合行，包括嵌套在原生分组中的行。`resolveEntryOwnership(items, rows, entries, { protectedModules, ownerEntryId })` 接收带有 Loader 条目 id 与模块名的运行时项，并为每一项返回 `patchId`；受保护模块或所属条目返回 `readOnlyReason: management-required`；若不存在唯一的、同名且位于 profile include 之下的行，则返回 `unaddressable`。管理类包复用它，以便对 patch 可修改哪些条目保持一致。
+
 <a id="startup-and-reload-failures"></a>
 ### 启动与重载失败
 
@@ -155,6 +160,7 @@ Loader 结算后，app-boot 在仅 optional 条目未激活时输出警告。如
 |---|---|
 | [`src/index.ts`](src/index.ts) | 启动 helper：配置解析、环境加载、会明确报错的保护机制、激活审计、patch 解析、配置 dump、harness 源码段落 |
 | [`src/profile.ts`](src/profile.ts) | profile 发现、初始化、组合包解析、runtime resolution 构造 |
+| [`src/ownership.ts`](src/ownership.ts) | 已组合插件条目的 patch 行归属 |
 | [`src/profile-plugins.ts`](src/profile-plugins.ts) | 已安装依赖、bundle 启用策略与 manifest 更新 |
 | [`src/profile-sanitize.ts`](src/profile-sanitize.ts) | profile patch 备份与恢复 bundle 启用状态 |
 | [`src/config-schema/`](src/config-schema/) | Profile schema 生成、发现、原生投影与结果类型 |

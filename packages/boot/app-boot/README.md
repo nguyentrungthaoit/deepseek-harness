@@ -84,6 +84,11 @@ The projector preserves native omission behavior by checking literal defaults ag
 
 Use `readPluginMeta(specifier, parentURL)` or `ctx.pluginPackages.metaOf(specifier, parentURL)` to read installed package display text without importing or activating the plugin. Lookup uses the complete package specifier and the caller's resolution base, respecting Node exports. File paths and file URLs return no metadata without resolving resources. For a package-root specifier, missing locale fields fall back to the accessible `package.json`; a subpath specifier never reads a `package.json`. Malformed metadata returns an `error` diagnostic. Results retain translations for Client-side language selection. The reader also loads an image data URL, even when locale text is complete: a package root uses its manifest `icon`, or `<package>/icon` when that field is omitted; a subpath uses `<specifier>/icon`. An icon error preserves valid text alongside the diagnostic. See [Plugin display metadata](../../../docs/cookbook/adding-a-package.md#plugin-display-metadata) for the author format.
 
+<a id="entry-ownership"></a>
+### Resolving which patch row owns a plugin entry
+
+`flattenEntries(rows)` lists the composed rows a profile patch can address, including rows nested in native groups. `resolveEntryOwnership(items, rows, entries, { protectedModules, ownerEntryId })` takes runtime items that name a Loader entry id and a module name, and returns each with a `patchId`, or with a `readOnlyReason` of `management-required` for a protected module or the owning entry, or `unaddressable` when exactly one same-named row under the profile's include does not own it. Management packages reuse it so they agree on which entries a patch may change.
+
 <a id="startup-and-reload-failures"></a>
 ### Startup and reload failures
 
@@ -155,6 +160,7 @@ The exports each own one stage of the boot: config resolution and snapshot repla
 |---|---|
 | [`src/index.ts`](src/index.ts) | Boot helpers: config resolution, environment loading, fail-loud guard, activation audit, patch parsing, config dump, harness-source section |
 | [`src/profile.ts`](src/profile.ts) | Profile discovery, initialization, bundle resolution, runtime resolution construction |
+| [`src/ownership.ts`](src/ownership.ts) | Patch-row ownership of composed plugin entries |
 | [`src/profile-plugins.ts`](src/profile-plugins.ts) | Installed dependencies, bundle activation policy, and manifest updates |
 | [`src/profile-sanitize.ts`](src/profile-sanitize.ts) | Profile patch backup and recovery bundle activation |
 | [`src/config-schema/`](src/config-schema/) | Profile schema generation, discovery, native projection, and result types |
