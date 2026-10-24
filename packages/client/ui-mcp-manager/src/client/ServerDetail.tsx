@@ -1,16 +1,24 @@
 /** One MCP server: status, config summary, tools, warnings, and the reconnect, edit, and delete actions. */
 import { useState, type ReactNode } from 'react'
-import { Button, Modal, StateDot, Tag } from '@deepseek-ai/dsh-client-ui-primitives'
+import {
+  Button, IconChevronLeftOutlineRegular, IconEditOutlineRegular, IconRefreshOutlineRegular,
+  IconTrashOutlineRegular, Modal, StateDot, Tag, type TagTone,
+} from '@deepseek-ai/dsh-client-ui-primitives'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import type { McpFieldView, McpServerView } from '@deepseek-ai/dsh-mcp-manager/types'
 import type { McpOutcome } from './catalog.ts'
 import type { McpManagerLocaleKey } from './locales.ts'
 import css from './McpPanel.module.css'
-import { canReconnect, ownershipKey, statusLabel, statusTone, transportKey } from './presentation.ts'
-import { DOT_STATE, useNow } from './ServerList.tsx'
+import { canReconnect, ownershipKey, statusLabel, statusTone, transportKey, type Tone } from './presentation.ts'
+import { DOT_STATE, ServerAvatar, useNow } from './ServerList.tsx'
 import { ToolList } from './ToolList.tsx'
 
 type T = TranslateNS<'mcpManager'>
+
+/** Status tone to the tag tint that frames the status chip. */
+const TAG_TONE: Readonly<Record<Tone, TagTone>> = {
+  neutral: 'neutral', progress: 'info', success: 'success', warning: 'warning', danger: 'danger',
+}
 
 /**
  * Show a stored value, or the source of the expression that computes it.
@@ -87,88 +95,131 @@ export function ServerDetail(props: {
     : server.readOnlyReason === 'management-required' ? 'readOnly.managementRequired' : 'readOnly.unaddressable'
   const secretField = config.transport === 'stdio' ? 'env' : 'headers'
   const secretRows = server.secrets.filter(secret => secret.path.length === 2 && secret.path[0] === secretField)
+  const tone = statusTone(status)
+  const configRow = (key: McpManagerLocaleKey, value: ReactNode): ReactNode => (
+    <div className={css.configRow}>
+      <dt>{t(key)}</dt>
+      <dd>{value}</dd>
+    </div>
+  )
+  const stat = (key: McpManagerLocaleKey, value: ReactNode): ReactNode => (
+    <div className={css.stat}>
+      <span className={css.statLabel}>{t(key)}</span>
+      <span className={css.statValue}>{value}</span>
+    </div>
+  )
   return (
-    <div className={css.section}>
+    <div className={css.detail}>
       <div>
-        <Button size="sm" variant="ghost" onClick={props.onBack}>{t('action.back')}</Button>
+        <button type="button" className={css.crumb} onClick={props.onBack}>
+          <IconChevronLeftOutlineRegular size={14} />
+          {t('action.back')}
+        </button>
       </div>
-      <div className={css.header}>
-        <div className={css.section}>
-          <h2 className={css.heading}>{server.serverName}</h2>
-          <span className={css.meta}>
-            <Tag>{t(transportKey(server.transport))}</Tag>
-            <Tag tone="quiet">{t(ownershipKey(server.ownership))}</Tag>
-          </span>
+      <div className={css.hero} data-tone={tone}>
+        <div className={css.heroTop}>
+          <div className={css.heroHead}>
+            <ServerAvatar name={server.serverName} size="lg" />
+            <div className={css.heroTitle}>
+              <h2 className={css.heroName}>{server.serverName}</h2>
+              <span className={css.meta}>
+                <Tag tone={TAG_TONE[tone]}>
+                  <span className={css.tagStatus}>
+                    <StateDot state={DOT_STATE[tone]} />
+                    {t(label.key, label.params)}
+                  </span>
+                </Tag>
+                <Tag tone="outline">{t(ownershipKey(server.ownership))}</Tag>
+              </span>
+            </div>
+          </div>
+          <div className={css.heroActions}>
+            <Button
+              size="sm" variant="outline" icon={<IconRefreshOutlineRegular size={14} />}
+              disabled={!canReconnect(status) || props.pending} onClick={() => { void reconnect(false) }}
+            >
+              {t('action.reconnect')}
+            </Button>
+            {server.ownership === 'readonly'
+              ? null
+              : (
+                <Button size="sm" variant="outline" icon={<IconEditOutlineRegular size={14} />} disabled={props.pending} onClick={props.onEdit}>
+                  {t('action.edit')}
+                </Button>
+              )}
+            {server.ownership === 'profile'
+              ? (
+                <Button
+                  size="sm" variant="outline" className={css.danger} icon={<IconTrashOutlineRegular size={14} />}
+                  disabled={props.pending} onClick={() => { setConfirmingDelete(true) }}
+                >
+                  {t('action.delete')}
+                </Button>
+              )
+              : null}
+          </div>
         </div>
-        <div className={css.actions}>
-          <Button size="sm" variant="outline" disabled={!canReconnect(status) || props.pending} onClick={() => { void reconnect(false) }}>
-            {t('action.reconnect')}
-          </Button>
-          {server.ownership === 'readonly'
+        <div className={css.stats}>
+          {stat('tools', server.tools.length)}
+          {stat('form.transport', t(transportKey(server.transport)))}
+          {stat('serverInfo', server.serverInfo === undefined ? '—' : `${server.serverInfo.name} ${server.serverInfo.version}`)}
+        </div>
+      </div>
+      {readOnlyNote === undefined ? null : <p className={css.notice}>{t(readOnlyNote)}</p>}
+      {error === undefined ? null : <p role="alert" className={`${css.notice} ${css.noticeDanger}`}>{t(error)}</p>}
+      {label.detail === undefined && status.state !== 'backoff' && lastError === undefined && orphan === undefined
+        ? null
+        : (
+          <div className={`${css.notice} ${tone === 'danger' ? css.noticeDanger : css.noticeWarning}`}>
+            {label.detail === undefined ? null : <p className={css.noticeTitle}>{t(label.detail.key)}</p>}
+            {status.state === 'backoff'
+              ? <p className={css.noticeLine}>{t('attempt', { attempt: status.attempt, max: status.maxAttempts })}</p>
+              : null}
+            {lastError === undefined ? null : <p className={css.noticeLine}>{t('lastError')}: {lastError}</p>}
+            {orphan === undefined ? null : <p className={css.noticeLine}>{t('orphan', { pid: orphan })}</p>}
+          </div>
+        )}
+      <section className={css.section}>
+        <h3 className={css.sectionTitle}>{t('section.config')}</h3>
+        <dl className={`${css.card} ${css.config}`}>
+          {config.transport === 'stdio'
+            ? (
+              <>
+                {configRow('form.command', <code className={css.code}>{fieldText(config.command, t)}</code>)}
+                {config.args === undefined ? null : configRow('detail.args', <code className={css.code}>{fieldText(config.args, t)}</code>)}
+                {config.cwd === undefined ? null : configRow('form.cwd', <code className={css.code}>{fieldText(config.cwd, t)}</code>)}
+              </>
+            )
+            : configRow('form.url', <code className={css.code}>{fieldText(config.url, t)}</code>)}
+          {secretRows.length === 0
             ? null
-            : <Button size="sm" variant="outline" disabled={props.pending} onClick={props.onEdit}>{t('action.edit')}</Button>}
-          {server.ownership === 'profile'
-            ? <Button size="sm" variant="outline" disabled={props.pending} onClick={() => { setConfirmingDelete(true) }}>{t('action.delete')}</Button>
-            : null}
-        </div>
-      </div>
-      {readOnlyNote === undefined ? null : <p className={css.hint}>{t(readOnlyNote)}</p>}
-      {error === undefined ? null : <p role="alert" className={css.error}>{t(error)}</p>}
-      <section className={css.section}>
-        <span className={css.rowTitle}>
-          <StateDot state={DOT_STATE[statusTone(status)]} />
-          <span className={css.name}>{t(label.key, label.params)}</span>
-        </span>
-        {label.detail === undefined ? null : <p className={css.hint}>{t(label.detail.key)}</p>}
-        {status.state === 'backoff'
-          ? <p className={css.hint}>{t('attempt', { attempt: status.attempt, max: status.maxAttempts })}</p>
-          : null}
-        {lastError === undefined ? null : <p className={css.hint}>{t('lastError')}: {lastError}</p>}
-        {orphan === undefined ? null : <p className={css.hint}>{t('orphan', { pid: orphan })}</p>}
+            : configRow(config.transport === 'stdio' ? 'form.env' : 'form.headers', (
+              <ul className={css.secrets}>
+                {secretRows.map(secret => (
+                  <li key={secret.path.join('.')} className={css.secret}>
+                    <code className={css.code}>{secret.path[1]}</code>
+                    {secret.set ? <span className={css.stored}>{t('detail.secretStored')}</span> : null}
+                  </li>
+                ))}
+              </ul>
+            ))}
+        </dl>
       </section>
-      <dl className={css.config}>
-        <dt>{t('form.transport')}</dt>
-        <dd>{t(transportKey(server.transport))}</dd>
-        {config.transport === 'stdio'
-          ? (
-            <>
-              <dt>{t('form.command')}</dt>
-              <dd><code>{fieldText(config.command, t)}</code></dd>
-              {config.args === undefined ? null : <><dt>{t('form.args')}</dt><dd><code>{fieldText(config.args, t)}</code></dd></>}
-              {config.cwd === undefined ? null : <><dt>{t('form.cwd')}</dt><dd><code>{fieldText(config.cwd, t)}</code></dd></>}
-            </>
-          )
-          : <><dt>{t('form.url')}</dt><dd><code>{fieldText(config.url, t)}</code></dd></>}
-        {secretRows.length === 0
-          ? null
-          : (
-            <>
-              <dt>{t(config.transport === 'stdio' ? 'form.env' : 'form.headers')}</dt>
-              <dd>
-                <ul className={css.tools}>
-                  {secretRows.map(secret => (
-                    <li key={secret.path.join('.')}>
-                      <code>{secret.path[1]}</code> {secret.set ? <span className={css.hint}>{t('form.secretStored')}</span> : null}
-                    </li>
-                  ))}
-                </ul>
-              </dd>
-            </>
-          )}
-        {server.serverInfo === undefined
-          ? null
-          : <><dt>{t('serverInfo')}</dt><dd>{server.serverInfo.name} {server.serverInfo.version}</dd></>}
-      </dl>
       <section className={css.section}>
-        <h3 className={css.heading}>{t('tools')}</h3>
+        <h3 className={css.sectionTitle}>
+          {t('tools')}
+          <span className={css.count}>{server.tools.length}</span>
+        </h3>
         <ToolList tools={server.tools} t={t} />
       </section>
       {props.warnings.length === 0
         ? null
         : (
           <section className={css.section}>
-            <h3 className={css.heading}>{t('warnings')}</h3>
-            <ul className={css.warnings}>{props.warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>
+            <h3 className={css.sectionTitle}>{t('warnings')}</h3>
+            <ul className={`${css.notice} ${css.noticeWarning} ${css.warnings}`}>
+              {props.warnings.map((warning, index) => <li key={index}>{warning}</li>)}
+            </ul>
           </section>
         )}
       <Modal
@@ -178,7 +229,7 @@ export function ServerDetail(props: {
         footer={(
           <div className={css.actions}>
             <Button variant="ghost" onClick={() => { setConfirmingDelete(false) }}>{t('action.cancel')}</Button>
-            <Button variant="primary" onClick={() => { void remove() }}>{t('confirmDelete.confirm')}</Button>
+            <Button className={css.dangerSolid} onClick={() => { void remove() }}>{t('confirmDelete.confirm')}</Button>
           </div>
         )}
       />

@@ -13,8 +13,9 @@ import { useState } from 'react'
 import type { ReactNode } from 'react'
 import {
   Button, IconInfoOutlineRegular, IconPlusOutlineRegular, IconRefreshOutlineRegular, IconSearchOutlineRegular,
-  IconSendOutlineRegular, IconSkillOutlineRegular, Input, Switch, Tag, Tooltip,
+  IconSendOutlineRegular, Input, Switch, Tag, Tooltip,
 } from '@deepseek-ai/dsh-client-ui-primitives'
+import { SkillAvatar } from './SkillParts.tsx'
 import { groupSkills } from './catalog.ts'
 import type { CatalogSnapshot, ManagedSkill } from './catalog.ts'
 import type { SkillManagerBodyProps } from './Panel.tsx'
@@ -145,7 +146,7 @@ function Group({
           const source = !skill.writable && skill.source !== ''
           return (
             <li key={skill.name} className={css.card}>
-              <span className={css.cardIcon}><IconSkillOutlineRegular size={16} /></span>
+              <SkillAvatar name={skill.name} className={css.cardIcon} />
               <div className={css.cardMain}>
                 <button
                   type="button"

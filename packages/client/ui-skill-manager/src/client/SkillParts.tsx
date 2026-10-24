@@ -3,7 +3,7 @@
  * the Subagent row.
  */
 import { useMemo } from 'react'
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { MarkdownText, Switch } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { SkillManagerBodyProps } from './Panel.tsx'
 import css from './Panel.module.css'
@@ -29,6 +29,22 @@ export function SkillDocument({ text, t }: { text: string; t: SkillManagerBodyPr
         ? <p className={css.muted}>{t('body.empty')}</p>
         : <MarkdownText text={text} labels={labels} />}
     </div>
+  )
+}
+
+/**
+ * A skill's initial on a tile whose hue is stable per name, so cards are told apart at a glance.
+ * @param props.name - the skill name.
+ * @param props.className - `cardIcon` on a list card, `heroIcon` on the detail page.
+ * @returns the avatar tile.
+ */
+export function SkillAvatar({ name, className }: { name: string; className: string | undefined }): ReactNode {
+  let hue = 0
+  for (const char of name) hue = (hue * 31 + char.charCodeAt(0)) % 360
+  return (
+    <span aria-hidden className={className} style={{ '--skill-hue': hue } as CSSProperties}>
+      {name.charAt(0).toUpperCase()}
+    </span>
   )
 }
 

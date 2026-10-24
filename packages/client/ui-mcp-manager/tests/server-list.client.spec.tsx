@@ -46,7 +46,7 @@ describe('ServerList', () => {
     expect(r.getByText('Disabled')).toBeTruthy()
     expect(r.getByText('Connecting')).toBeTruthy()
     expect(r.getByText('Stopped')).toBeTruthy()
-    expect(r.getByText('1 tools')).toBeTruthy()
+    expect(r.getByText('1 tool')).toBeTruthy()
     expect(r.getByText('Streamable HTTP')).toBeTruthy()
     fireEvent.click(r.getByText('c'))
     expect(r.onOpen).toHaveBeenCalledWith('c')

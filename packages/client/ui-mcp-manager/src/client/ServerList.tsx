@@ -1,5 +1,5 @@
 /** The MCP server rows: status, transport, ownership, tool count, and the enabled switch. */
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import { Button, StateDot, Switch, Tag, type StateDotState } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import type { McpServerView } from '@deepseek-ai/dsh-mcp-manager/types'
@@ -10,6 +10,25 @@ import { ownershipKey, statusLabel, statusTone, transportKey, type Tone } from '
 /** Status tone to the dot state that draws it. */
 export const DOT_STATE: Readonly<Record<Tone, StateDotState>> = {
   neutral: 'idle', progress: 'ongoing', success: 'done', warning: 'warning', danger: 'error',
+}
+
+/**
+ * A server's initial on a tile whose hue is stable per name, so rows are told apart at a glance.
+ * @param props.name - the server name.
+ * @param props.size - `md` in list rows, `lg` in the detail header.
+ * @returns the avatar tile.
+ */
+export function ServerAvatar(props: { name: string; size: 'md' | 'lg' }): ReactNode {
+  let hash = 0
+  for (const char of props.name) hash = (hash * 31 + char.charCodeAt(0)) % 360
+  return (
+    <span
+      aria-hidden className={props.size === 'lg' ? css.avatarLg : css.avatar}
+      style={{ '--mcp-avatar-hue': hash } as CSSProperties}
+    >
+      {props.name.charAt(0).toUpperCase()}
+    </span>
+  )
 }
 
 /**
@@ -63,16 +82,18 @@ export function ServerList(props: {
     const locked = !props.canToggle || server.ownership === 'readonly' || pending
     return (
       <li key={server.entryId} className={css.row}>
+        <ServerAvatar name={server.serverName} size="md" />
         <button type="button" className={css.rowMain} onClick={() => { props.onOpen(server.entryId) }}>
           <span className={css.rowTitle}>
-            <StateDot state={DOT_STATE[statusTone(server.status)]} />
             <span className={css.name}>{server.serverName}</span>
-            <Tag>{t(transportKey(server.transport))}</Tag>
-            <Tag tone="quiet">{t(ownershipKey(server.ownership))}</Tag>
+            <Tag tone="neutral">{t(transportKey(server.transport))}</Tag>
+            <Tag tone="outline">{t(ownershipKey(server.ownership))}</Tag>
           </span>
-          <span className={css.meta}>
-            <span className={css.hint}>{t(label.key, label.params)}</span>
-            <span className={css.hint}>{t('toolCount', { count: server.tools.length })}</span>
+          <span className={css.rowStatus}>
+            <StateDot state={DOT_STATE[statusTone(server.status)]} />
+            <span>{t(label.key, label.params)}</span>
+            <span className={css.dotSep} aria-hidden>·</span>
+            <span>{server.tools.length === 1 ? t('toolCountOne') : t('toolCount', { count: server.tools.length })}</span>
           </span>
         </button>
         <Switch

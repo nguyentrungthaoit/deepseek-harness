@@ -10,14 +10,14 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 import {
-  Button, IconChevronLeftOutlineRegular, IconEditOutlineRegular, IconSendOutlineRegular, IconSkillOutlineRegular,
+  Button, IconChevronLeftOutlineRegular, IconEditOutlineRegular, IconSendOutlineRegular,
   IconTrashOutlineRegular, Modal, Tag, Tooltip,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ManagedSkill } from './catalog.ts'
 import type { SkillManagerBodyProps } from './Panel.tsx'
 import { useSubagentSwitch } from './subagent-switch.ts'
 import { failureToast } from './SkillToast.tsx'
-import { SkillDocument, SubagentRow } from './SkillParts.tsx'
+import { SkillAvatar, SkillDocument, SubagentRow } from './SkillParts.tsx'
 import css from './Panel.module.css'
 
 /**
@@ -58,7 +58,7 @@ export function SkillDetail({
       <div className={css.body}>
         <div className={css.hero}>
           <div className={css.heroHead}>
-            <span className={css.heroIcon}><IconSkillOutlineRegular size={24} /></span>
+            <SkillAvatar name={skill.name} className={css.heroIcon} />
             <div className={css.heroTitle}>
               <h2 className={css.heroName}>{skill.name}</h2>
               <div className={css.chips}>

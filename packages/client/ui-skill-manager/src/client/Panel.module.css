@@ -122,9 +122,13 @@
 }
 
 .groupCount {
-  color: var(--dsw-alias-label-caption);
-  font-size: 13px;
-  font-weight: 400;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--dsw-alias-bg-module-platform);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -159,17 +163,24 @@
   background: var(--dsw-alias-interactive-bg-hover-solid);
 }
 
-.cardIcon {
+/* The skill's initial on a tile tinted with a hue derived from its name. */
+.cardIcon,
+.heroIcon {
   display: inline-flex;
   flex: none;
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
-  width: 32px;
-  height: 32px;
-  border: 0.5px solid var(--dsw-alias-border-l3);
-  border-radius: var(--dsw-radius-md);
-  color: var(--dsw-alias-label-secondary);
+  width: 34px;
+  height: 34px;
+  border: 0.5px solid hsl(var(--skill-hue, 220) 60% 55% / 0.35);
+  border-radius: var(--dsw-radius-lg);
+  background: linear-gradient(135deg, hsl(var(--skill-hue, 220) 70% 60% / 0.28), hsl(calc(var(--skill-hue, 220) + 40) 70% 55% / 0.12));
+  /* Mixed with the label color so the initial darkens in light themes and lightens in dark ones. */
+  color: color-mix(in srgb, hsl(var(--skill-hue, 220) 70% 50%) 70%, var(--dsw-alias-label-primary));
+  font-size: 14px;
+  font-weight: 600;
+  user-select: none;
 }
 
 .cardMain {
@@ -354,34 +365,31 @@
   cursor: pointer;
 }
 
-/* Detail header: icon frame beside the name and chips, then the description and actions. */
+/* Detail header: a card tinted with the skill's hue, avatar beside the name and chips, then the description and actions. */
 .hero {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 4px 0 20px;
-  border-bottom: 0.5px solid var(--dsw-alias-border-l3);
+  padding: 16px;
+  border: 0.5px solid var(--dsw-alias-settings-card-stroke);
+  border-radius: var(--dsw-radius-xl);
+  background:
+    radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, var(--dsw-alias-state-business-primary) 10%, transparent), transparent 60%),
+    var(--dsw-alias-settings-card-fill);
 }
 
 .heroHead {
   display: flex;
-  gap: 14px;
+  gap: 12px;
   align-items: center;
   min-width: 0;
 }
 
 .heroIcon {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
   width: 48px;
   height: 48px;
-  border: 0.5px solid var(--dsw-alias-border-l3);
-  border-radius: var(--dsw-radius-lg);
-  background: var(--dsw-alias-settings-card-fill);
-  color: var(--dsw-alias-label-secondary);
+  border-radius: var(--dsw-radius-xl);
+  font-size: 20px;
 }
 
 .heroTitle {
@@ -398,9 +406,10 @@
 .heroName {
   margin: 0;
   overflow: hidden;
-  font-size: 16px;
-  font-weight: 500;
+  font-size: 17px;
+  font-weight: 600;
   line-height: 24px;
+  letter-spacing: -0.01em;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
@@ -447,10 +456,10 @@
 
 .sectionTitle {
   margin: 0;
-  color: var(--dsw-alias-label-secondary);
-  font-size: 13px;
+  color: var(--dsw-alias-label-primary);
+  font-size: 14px;
   font-weight: 500;
-  line-height: 18px;
+  line-height: 22px;
 }
 
 .sectionText {

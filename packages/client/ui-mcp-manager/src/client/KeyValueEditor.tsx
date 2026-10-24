@@ -4,7 +4,7 @@
  * takes a key and a value. Values are never prefilled.
  */
 import { useId, type ReactNode } from 'react'
-import { Button, Input, SettingsSecretField } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconPlusOutlineRegular, IconTrashOutlineRegular, Input, SettingsSecretField } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SecretRow } from './form-model.ts'
 import type {} from './locales.ts'
@@ -31,29 +31,40 @@ export function KeyValueEditor(props: {
     props.onChange(rows.map((row, at) => at === index ? { ...row, ...next } : row))
   }
   return (
-    <fieldset className={css.entries} disabled={props.disabled}>
-      <legend className={css.label}>{props.label}</legend>
-      {rows.map((row, index) => (
-        <div key={row.stored ? `stored:${row.key}` : `new:${String(index)}`} className={css.entry}>
-          {row.stored
-            ? (
-              <SettingsSecretField
-                id={`${id}-${String(index)}`} label={row.key} hint={t('form.secretStored')} text={row.value}
-                configured stateLabel={t('form.secretStored')} disabled={props.disabled}
-                onEdit={(value) => { update(index, { value }) }}
-              />
-            )
-            : (
-              <>
-                <Input aria-label={t('form.key')} placeholder={t('form.key')} value={row.key} onChange={(event) => { update(index, { key: event.target.value }) }} />
-                <Input aria-label={t('form.value')} placeholder={t('form.value')} type="password" autoComplete="new-password" value={row.value} onChange={(event) => { update(index, { value: event.target.value }) }} />
-              </>
-            )}
-          <Button size="sm" variant="ghost" onClick={() => { props.onChange(rows.filter((_row, at) => at !== index)) }}>{t('form.removeEntry')}</Button>
-        </div>
-      ))}
-      <div>
-        <Button size="sm" variant="outline" onClick={() => { props.onChange([...rows, { key: '', stored: false, value: '' }]) }}>{t('form.addEntry')}</Button>
+    <fieldset className={css.section} disabled={props.disabled}>
+      <legend className={css.sectionTitle}>
+        {props.label}
+        {rows.length === 0 ? null : <span className={css.count}>{rows.length}</span>}
+      </legend>
+      <div className={`${css.card} ${css.entries}`}>
+        {rows.map((row, index) => (
+          <div key={row.stored ? `stored:${row.key}` : `new:${String(index)}`} className={css.entry}>
+            {row.stored
+              ? (
+                <div className={css.entryStored}>
+                  <SettingsSecretField
+                    id={`${id}-${String(index)}`} label={row.key} hint={t('form.secretStored')} text={row.value}
+                    configured stateLabel={t('form.secretStored')} disabled={props.disabled}
+                    onEdit={(value) => { update(index, { value }) }}
+                  />
+                </div>
+              )
+              : (
+                <>
+                  <Input className={css.mono ?? ''} aria-label={t('form.key')} placeholder={t('form.key')} value={row.key} onChange={(event) => { update(index, { key: event.target.value }) }} />
+                  <Input aria-label={t('form.value')} placeholder={t('form.value')} type="password" autoComplete="new-password" value={row.value} onChange={(event) => { update(index, { value: event.target.value }) }} />
+                </>
+              )}
+            <button type="button" className={css.removeEntry} onClick={() => { props.onChange(rows.filter((_row, at) => at !== index)) }}>
+              <IconTrashOutlineRegular size={14} />
+              <span className={css.srOnly}>{t('form.removeEntry')}</span>
+            </button>
+          </div>
+        ))}
+        <button type="button" className={css.addEntry} onClick={() => { props.onChange([...rows, { key: '', stored: false, value: '' }]) }}>
+          <IconPlusOutlineRegular size={14} />
+          {t('form.addEntry')}
+        </button>
       </div>
     </fieldset>
   )

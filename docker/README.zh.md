@@ -66,7 +66,7 @@ docker compose --env-file docker/compose.env down
 ## 在公司使用（只需 Docker）
 
 ```sh
-docker pull nguyentrungthaoit/dsh:0.2.1-alpha.6
+docker pull nguyentrungthaoit/dsh:0.2.1-alpha.7
 ```
 
 ### Web UI
@@ -77,13 +77,13 @@ docker run --rm -p 3080:3080 \
   -v dsh-home:/data/dsh \
   -v /path/to/project:/workspace \
   -w /workspace \
-  nguyentrungthaoit/dsh:0.2.1-alpha.6
+  nguyentrungthaoit/dsh:0.2.1-alpha.7
 ```
 
 打开 `http://127.0.0.1:3080`。如果通过公司 hostname 访问：
 
 ```sh
-... nguyentrungthaoit/dsh:0.2.1-alpha.6 web --no-open --port 3080 --trusted-host app.company.local:3080
+... nguyentrungthaoit/dsh:0.2.1-alpha.7 web --no-open --port 3080 --trusted-host app.company.local:3080
 ```
 
 ### Headless（单个任务）
@@ -93,7 +93,7 @@ docker run --rm \
   -e DEEPSEEK_API_KEY=sk-... \
   -v /path/to/project:/workspace \
   -w /workspace \
-  nguyentrungthaoit/dsh:0.2.1-alpha.6 \
+  nguyentrungthaoit/dsh:0.2.1-alpha.7 \
   --profile headless "summarize this repository"
 ```
 
@@ -130,12 +130,12 @@ Docker 绑定 `0.0.0.0`，因此 Host 使用 **browse**（浏览容器内目录�
 ```sh
 docker build \
   --build-arg DSH_CLIENT_COMMIT_HASH="$(git rev-parse HEAD)" \
-  -t nguyentrungthaoit/dsh:0.2.1-alpha.6 \
+  -t nguyentrungthaoit/dsh:0.2.1-alpha.7 \
   -t nguyentrungthaoit/dsh:latest \
   .
 
 docker login
-docker push nguyentrungthaoit/dsh:0.2.1-alpha.6
+docker push nguyentrungthaoit/dsh:0.2.1-alpha.7
 docker push nguyentrungthaoit/dsh:latest
 ```
 
@@ -143,7 +143,11 @@ docker push nguyentrungthaoit/dsh:latest
 
 ## 镜像里的 shell
 
-容器带有 `bash`、`git`、`curl` 和 `tini`（PID 1，转发 SIGTERM 并回收子进程）。`PATH` 上的 `python3` 和 `pip` 是 venv `/opt/dsh-py`，已安装 `python-docx` 1.2.0、`openpyxl` 3.1.5 和 `pypdf` 6.19.0。Agent 在需要读取 `.docx`、`.xlsx` 或 PDF 文本时调用 `python3`。Web 不挂载 Desktop 的 Office skill，因此模型不会被提示使用这些库。装进 `/opt/dsh-py` 的 `pip install` 会在重建容器时消失；建在 `/workspace` 下的 venv 位于宿主机挂载上。
+容器带有 `bash`、`git`、`curl`、`jq`、`rg`（ripgrep）、`make`、`sqlite3`、`zip`/`unzip`、`xz`、`file`、`less`、`ps` 和 `tini`（PID 1，转发 SIGTERM 并回收子进程）。`PATH` 上的 `python3` 和 `pip` 是 venv `/opt/dsh-py`，已安装 `python-docx` 1.2.0、`openpyxl` 3.1.5、`pypdf` 6.19.0、`pandas` 2.3.3 和 `matplotlib` 3.10.7。Agent 在需要读取 `.docx`、`.xlsx` 或 PDF 文本时调用 `python3`。
+
+公司网络不允许在运行时下载软件包，因此 agent 需要的工具都预装在镜像里。镜像安装了 Noto（完整的越南语声调）、DejaVu、Liberation（与 Arial/Times/Courier 字宽一致）和 Carlito/Caladea（替代 Calibri/Cambria）字体。Web 中的 Office 预览和 `matplotlib` 图表使用这些字体。
+
+镜像带有 `HEALTHCHECK`：容器内 3080 端口的 Web 有响应时，`docker ps` 显示 `healthy`。Web 不挂载 Desktop 的 Office skill，因此模型不会被提示使用这些库。装进 `/opt/dsh-py` 的 `pip install` 会在重建容器时消失；建在 `/workspace` 下的 venv 位于宿主机挂载上。
 
 ## 自定义 skill
 
@@ -153,4 +157,4 @@ docker push nguyentrungthaoit/dsh:latest
 
 Web UI 控制 agent（容器内的 shell/filesystem）。只在内网/VPN 上发布端口；如果暴露到外网，请放在带认证的反向代理后面。
 
-运行不可信文件的工具（如 `read_document`）总是在沙箱中运行。镜像安装了 `bubblewrap`（Linux 上的首选 runner），并预先构建了 `landlock-run` 启动器（备用 runner，需要内核启用 Landlock）。没有可用的 runner 时，工具会报告 `SANDBOX_UNAVAILABLE`，而不是在沙箱外运行。在 Docker Desktop（WSL2）上，两者在默认 seccomp 下都能运行；那里的 Landlock 只达到旧版 ABI（`partially enforced`）。
+运行不可信文件的工具（如 `read_document`）总是在沙箱中运行。镜像安装了 `bubblewrap`（Linux 上的首选 runner），并预先构建了 `landlock-run` 启动器（备用 runner，需要内核启用 Landlock）。没有可用的 runner 时，工具会报告 `SANDBOX_UNAVAILABLE`，而不是在沙箱外运行。在 Docker Desktop（WSL2）上，两者在默认 seccomp 下都能运行；那里的 Landlock 只达到旧版 ABI（`partially enforced`）。容器使用 `user: "1000:1000"`、`cap_drop: [ALL]` 和 `no-new-privileges:true` 时，`bubblewrap` 仍能完整运行。
