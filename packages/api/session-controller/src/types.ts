@@ -172,6 +172,10 @@ export type QueueAction =
   }
   | { readonly kind: 'remove' }
   | { readonly kind: 'steer' }
+  /** Swap a user-written next-turn item with its neighbour; a move past either end is a no-op. */
+  | { readonly kind: 'move'; readonly direction: 'up' | 'down' }
+  /** Start a user-written next-turn item now while the Agent is idle; the rest of the queue follows in order. */
+  | { readonly kind: 'run' }
 
 /** One Session list entry. */
 export interface SessionSummary {

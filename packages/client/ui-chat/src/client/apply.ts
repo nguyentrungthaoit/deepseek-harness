@@ -41,6 +41,11 @@ import { CHAT_SETTINGS_NAMESPACE, DEFAULT_LINK_OPENING, DEFAULT_TRANSCRIPT_VIEW_
 import { LinkOpeningRow, type LinkOpeningRowInjected } from './settings/LinkOpeningRow.tsx'
 import { PerformanceUsageRow, type PerformanceUsageRowInjected } from './settings/PerformanceUsageRow.tsx'
 import { PerformanceUsagePolicy } from './performance-usage.ts'
+import { StallWarningPolicy } from './stall-warning.ts'
+import { LiveActivityPolicy, TurnReportPolicy } from './live-activity.ts'
+import { LiveActivityRow, type LiveActivityRowInjected } from './settings/LiveActivityRow.tsx'
+import { ModelStallWarningRow, ToolStallWarningRow, type StallWarningRowInjected } from './settings/StallWarningRows.tsx'
+import { TurnReportRow, type TurnReportRowInjected } from './settings/TurnReportRow.tsx'
 import { useTurnDataValue } from './chat/use-turn-data.ts'
 import { bindDisclosure } from './chat/use-disclosure.ts'
 
@@ -149,9 +154,18 @@ export function apply(ctx: Context): void {
   const transcriptView = new TranscriptViewPolicy(chatSettings, 'dshDesktop' in globalThis ? 'standard' : DEFAULT_TRANSCRIPT_VIEW_MODE)
   const presentation = derivePresentationPolicy(transcriptView.mode)
   const performancePolicy = new PerformanceUsagePolicy(chatSettings)
-  ctx.effect(() => () => { transcriptView.dispose(); performancePolicy.dispose() })
+  const stallWarningPolicy = new StallWarningPolicy(chatSettings)
+  const liveActivityPolicy = new LiveActivityPolicy(chatSettings)
+  const turnReportPolicy = new TurnReportPolicy(chatSettings)
+  ctx.effect(() => () => {
+    transcriptView.dispose(); performancePolicy.dispose(); stallWarningPolicy.dispose()
+    liveActivityPolicy.dispose(); turnReportPolicy.dispose()
+  })
+  const stallWarning = stallWarningPolicy.thresholds
+  const liveActivity = liveActivityPolicy.enabled
+  const turnReport = turnReportPolicy.value
   const performanceUsage = performancePolicy.mode
-  registerChatNodeRenderers(ctx, performanceUsage, presentation)
+  registerChatNodeRenderers(ctx, performanceUsage, presentation, turnReport)
 
   ctx.slots.inject('settings.general.item', () => ctx.slots.register({
     name: 'settings.general.item',
@@ -163,6 +177,42 @@ export function apply(ctx: Context): void {
       setPerformanceUsage: (mode) => { performancePolicy.setMode(mode) },
     }),
   }, PerformanceUsageRow))
+
+  const stallWarningInject = (): StallWarningRowInjected => ({
+    hooks: { stallWarning },
+    setModelStallWarning: (seconds) => { stallWarningPolicy.setModel(seconds) },
+    setToolStallWarning: (seconds) => { stallWarningPolicy.setTool(seconds) },
+  })
+  ctx.slots.inject('settings.general.item', function* () {
+    yield ctx.slots.register({
+      name: 'settings.general.item', id: 'model-stall-warning', order: 31, locale: NS, inject: stallWarningInject,
+    }, ModelStallWarningRow)
+    yield ctx.slots.register({
+      name: 'settings.general.item', id: 'tool-stall-warning', order: 32, locale: NS, inject: stallWarningInject,
+    }, ToolStallWarningRow)
+  })
+
+  ctx.slots.inject('settings.general.item', () => ctx.slots.register({
+    name: 'settings.general.item',
+    id: 'live-activity',
+    order: 33,
+    locale: NS,
+    inject: (): LiveActivityRowInjected => ({
+      hooks: { liveActivity },
+      setLiveActivity: (enabled) => { liveActivityPolicy.setEnabled(enabled) },
+    }),
+  }, LiveActivityRow))
+
+  ctx.slots.inject('settings.general.item', () => ctx.slots.register({
+    name: 'settings.general.item',
+    id: 'turn-report',
+    order: 34,
+    locale: NS,
+    inject: (): TurnReportRowInjected => ({
+      hooks: { turnReport },
+      setTurnReport: (seconds) => { turnReportPolicy.set(seconds) },
+    }),
+  }, TurnReportRow))
 
   ctx.slots.inject('settings.general.item', () => ctx.slots.register({
     name: 'settings.general.item',
@@ -194,7 +244,7 @@ export function apply(ctx: Context): void {
         const chat = chatSource(binding)
         const conversation = ctx.uiConversation.binding(binding)
         return {
-          hooks: { presentation },
+          hooks: { presentation, stallWarning, liveActivity },
           keyedHooks: {
             chatNode: key => chat.getSnapshot().nodes.source(key),
             chatNodeProcess: key => chat.getSnapshot().nodes.processSource(key),

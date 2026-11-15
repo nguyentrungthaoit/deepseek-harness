@@ -299,7 +299,7 @@ it('appends plain text at the end of the draft and keeps reference chips', async
   b.binding.ctx.emit('conversation/input-append-text', { text: '/field-list ' })
   expect(b.shell.state.getSnapshot().draft).toBe('hello/field-list ')
   b.shell.dispose()
-  expect(b.binding.ctx.emit('conversation/input-append-text', { text: 'x' })).toBeUndefined()
+  expect(() => { b.binding.ctx.emit('conversation/input-append-text', { text: 'x' }) }).not.toThrow()
   expect(b.shell.state.getSnapshot().draft).toBe('hello/field-list ')
 })
 

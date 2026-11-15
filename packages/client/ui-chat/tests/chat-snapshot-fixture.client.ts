@@ -8,7 +8,7 @@ import type {
   ConversationLocationDataSource, ConversationLocationDataStore, ConversationTurnDataMap, TurnLocation,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { SessionSeq } from '@deepseek-ai/dsh-session/types'
-import type { TurnTokenUsage } from '../src/client/contract/chat-nodes.ts'
+import type { TurnReport, TurnTokenUsage } from '../src/client/contract/chat-nodes.ts'
 import {
   sameTurnNavigationItem, turnNavigationItem,
 } from '../src/client/conversation-nodes/turn-navigation.ts'
@@ -282,6 +282,8 @@ export function chatSnapshotFixture(input: {
   readonly turnEnds?: LegacyConversationSlice['turnEnds']
   /** Per-turn usage buckets; production derives these from session events. */
   readonly turnUsages?: ReadonlyMap<number, TurnTokenUsage> | undefined
+  /** Per-turn report cards; production derives these from session events. */
+  readonly turnReports?: ReadonlyMap<number, TurnReport> | undefined
 } = {}, previous?: ChatSnapshot): ChatSnapshot {
   const legacy: LegacyConversationSlice = {
     nodes: input.nodes ?? EMPTY,
@@ -469,6 +471,7 @@ export function chatSnapshotFixture(input: {
         && location.turn.turn === turnNumber
     })
     const tokenUsage = input.turnUsages?.get(turnNumber)
+    const report = input.turnReports?.get(turnNumber)
     const tailData = {
       turn: turnNumber,
       seq: endSeq,
@@ -478,6 +481,7 @@ export function chatSnapshotFixture(input: {
         || preceding?.kind !== 'assistant-step'
         || (preceding.data as ReturnType<typeof assistantData>).finalNode.seq !== closing.finalNode.seq,
       ...tokenUsage === undefined ? {} : { tokenUsage },
+      ...report === undefined ? {} : { report },
     }
     dataStore.set('turn-tail', tailData)
     nodes.push({

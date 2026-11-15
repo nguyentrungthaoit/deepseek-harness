@@ -47,7 +47,7 @@ Hierarchy uses registered canonical paths only. It does not scan for projects or
 
 ### Search
 
-Collapsed search is one header action beside the view and add actions: activating it expands the field across the header. A non-blank query replaces either browsing mode with one flat result list — case-insensitive title and Workspace substring matches appear immediately, while a 250 ms debounced Host request adds ranked current-conversation content matches and snippets. Each new query aborts the preceding request; a failed content search leaves metadata matches visible without an additional warning. The list is capped at 20. Choosing an unarchived result clears and collapses search, opens the Session, and scrolls its row into view in the configured browsing mode; grouped browsing also expands its Workspace and the full Session list when required. Archived results offer Unarchive; attempting to open one explains that restriction without clearing the query or navigating.
+Collapsed search is one header action beside the view and add actions: activating it expands the field across the header. A non-blank query replaces either browsing mode with one flat result list — case-insensitive title, Workspace, and Session id substring matches appear immediately, while a 250 ms debounced Host request adds ranked current-conversation content matches and snippets. Each new query aborts the preceding request; a failed content search leaves metadata matches visible without an additional warning. The list is capped at 20. Choosing an unarchived result clears and collapses search, opens the Session, and scrolls its row into view in the configured browsing mode; grouped browsing also expands its Workspace and the full Session list when required. Archived results offer Unarchive; attempting to open one explains that restriction without clearing the query or navigating.
 
 ### Managing sessions
 
@@ -62,6 +62,8 @@ The keyboard reference exposes New Session, Search sessions, Add workspace, Rena
 ### Pending interactions
 
 Session rows render the runtime's live `pendingInteraction` classification: approvals report **Waiting for approval**, plan reviews report **Plan awaiting review**, and ordinary questions report **Waiting for answer**. While an interaction is pending, the row uses the shared warning dot and replaces its trailing update time with **Approval**, **Plan review**, or **Answer**; the full status and relative time remain in hover details. Pending interaction takes precedence over the shared ongoing loader; a finished-but-unviewed Session uses done, while idle remains dot-free in the row and uses the shared idle dot in its hover details. The leading seat renders only while the row's primary status is idle — no pending interaction, no own or descendant activity, and no unviewed completion — so an occupant there never appears beside the row's own status dot. An archived row keeps that cell blank: it shows neither a status dot nor the seat, and its live status appears on the hover card only.
+
+Below each non-idle, non-archived, non-blank Session title a 10px caption names the specific state: **Waiting on you · approval**, **· question**, or **· plan review** (warning color), **Running** or **Running · N subagents**, and **Done · unread**. Pending interaction outranks activity, which outranks the unread reminder. Within an expanded Workspace group, unpinned Sessions waiting on the user lead the ordinary rows, behind the unchanged pinned block; archived rows never float.
 
 ### Active Schedule markers
 

@@ -1,0 +1,20 @@
+.rain {
+  display: block;
+  align-self: stretch;
+  width: min(100%, 360px);
+  height: 22px;
+  margin-top: 2px;
+  color: var(--dsw-alias-state-business-primary);
+  font: 10px var(--ds-font-family-code);
+  opacity: 0.5;
+  pointer-events: none;
+  mask-image: linear-gradient(to bottom, transparent, #000 35%, #000 65%, transparent),
+    linear-gradient(to right, #000 calc(100% - 48px), transparent);
+  mask-composite: intersect;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rain {
+    display: none;
+  }
+}

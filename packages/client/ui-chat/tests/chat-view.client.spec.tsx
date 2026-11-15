@@ -13,6 +13,7 @@ import type {
   ToolCallBlock, ToolResultNode, TurnErrorNode, TurnMaxTokensNode, UseChatNodeTurnData,
   TranscriptViewMode, UserMessageNode,
 } from '@deepseek-ai/dsh-client-ui-chat/client'
+import type { TurnReportThreshold } from '../src/chat-settings.ts'
 import type {
   SessionListState, SessionSnapshot,
 } from '@deepseek-ai/dsh-api-session-controller/client'
@@ -131,6 +132,7 @@ function makeSessionSource(init: Partial<TestSessionSnapshot> = {}) {
 
 type ChatSlice = Partial<LegacyConversationSlice> & {
   readonly turnUsages?: NonNullable<Parameters<typeof chatSnapshotFixture>[0]>['turnUsages']
+  readonly turnReports?: NonNullable<Parameters<typeof chatSnapshotFixture>[0]>['turnReports']
 }
 type HarnessUpdate = ChatSlice & Partial<TestSessionSnapshot> & { readonly chat?: ChatSnapshot }
 
@@ -260,7 +262,7 @@ function makeHarness(
   chatSnapshot?: ChatSnapshot,
 ) {
   const {
-    chat: initialChat, nodes, partial, runningCalls, turnTimings, turnEnds, turnUsages,
+    chat: initialChat, nodes, partial, runningCalls, turnTimings, turnEnds, turnUsages, turnReports,
     ...sessionInit
   } = init
   const chatSlice: ChatSlice = {
@@ -270,6 +272,7 @@ function makeHarness(
     ...(turnTimings === undefined ? {} : { turnTimings }),
     ...(turnEnds === undefined ? {} : { turnEnds }),
     ...(turnUsages === undefined ? {} : { turnUsages }),
+    ...(turnReports === undefined ? {} : { turnReports }),
   }
   const session = makeSessionSource({ ...sessionInit, ...sessionOverrides })
   const useTestSession = bindSnapshotSelector(session.source)
@@ -310,6 +313,7 @@ function makeHarness(
   const chat = createChatStore().create()
   const transcriptView = createSnapshotStore<TranscriptViewMode>('compact')
   const performanceUsage = createSnapshotStore<'compact' | 'detailed'>('detailed')
+  const turnReport = createSnapshotStore<TurnReportThreshold>(120)
   const t = makeTranslate(zh, commonZh)
   const toolOwners: Array<{
     callId: string
@@ -370,6 +374,7 @@ function makeHarness(
         return (
           <TurnTailNodeView
             usePerformanceUsage={bindSnapshotSelector(performanceUsage)}
+            useTurnReport={bindSnapshotSelector(turnReport)}
             {...nodeProps}
             node={nodeOwner.node}
             renderSlot={renderTurnTailSlot}
@@ -442,6 +447,8 @@ function makeHarness(
     useStore: bindSnapshotSelector(chat),
     actions: chat.actions,
     usePresentation: bindSnapshotSelector(derivePresentationPolicy(transcriptView)),
+    useStallWarning: bindSnapshotSelector(createSnapshotStore({ model: 120, tool: 300 } as const)),
+    useLiveActivity: bindSnapshotSelector(createSnapshotStore(true)),
     renderSlot,
     SessionProvider: SessionProviderStub,
     inspectCall: (callId: string) => { openView('trajectory', callId) },
@@ -484,6 +491,7 @@ function makeHarness(
     setOutline: (value: unknown) => { outlineValue = value },
     chatScroll, forkAt, toolOwners,
     setPerformanceUsage: (mode: 'compact' | 'detailed') => { performanceUsage.set(mode) },
+    setTurnReport: (seconds: TurnReportThreshold) => { turnReport.set(seconds) },
     setGrouped: (value: ConversationGroupedView<ProcessGroupData> | undefined) => {
       grouped = value
       conversation.set({ ...conversation.getSnapshot() })
@@ -509,7 +517,7 @@ function turnProcessControl(container: HTMLElement): HTMLButtonElement | null {
 }
 
 function runningContent(container: HTMLElement): HTMLElement | null {
-  return container.querySelector<HTMLElement>('[data-chat-running] > :last-child')
+  return container.querySelector<HTMLElement>('[data-chat-running] [data-shimmer="true"]')
 }
 
 function withClock(time: number, run: () => void): () => void {
@@ -2983,6 +2991,43 @@ describe('ChatView', () => {
       .not.toContain('已完成，用时 1小时5分3秒')
   })
 
+  it('shows the report card after a Turn that ran at least the accepted threshold', () => {
+    const final: AssistantMessageNode = {
+      kind: 'assistant', seq: 16, time: 16_000, turn: 1, step: 1, blocks: [{ kind: 'text', text: 'final' }],
+    }
+    const report = {
+      durationMs: 185_000, toolCalls: 7, files: 2, added: 12, removed: 3,
+      tests: { passed: 128, failed: 2, skipped: 5 },
+      slowest: { name: 'bash', durationMs: 63_000 },
+    }
+    const h = makeHarness({
+      nodes: [user(1, 'hi'), final],
+      turnTimings: new Map([[1, { startTime: 1_000, endTime: 186_000 }]]),
+      turnEnds: new Map([[1, 20]]),
+      turnReports: new Map([[1, report]]),
+    })
+    const view = render(<h.ChatView {...h.props} />)
+    const card = () => view.container.querySelector('[data-turn-report]')
+    expect(card()?.textContent).toBe('本轮小结用时 3分5秒7 次工具调用编辑 2 个文件+12−3测试测试：128 通过，2 失败，5 跳过✔ 128✘ 2⏭ 5最慢：bash 1分3秒')
+    act(() => { h.setTurnReport(300) })
+    expect(card()).toBeNull()
+    act(() => { h.setTurnReport(0) })
+    expect(card()).toBeNull()
+    act(() => { h.setTurnReport(60) })
+    expect(card()).not.toBeNull()
+  })
+
+  it('shows a bare report card for a Turn without edits, tests, or a closing answer', () => {
+    const h = makeHarness({
+      nodes: [user(1, 'hi')],
+      turnTimings: new Map([[1, { startTime: 1_000, endTime: 186_000 }]]),
+      turnEnds: new Map([[1, 20]]),
+      turnReports: new Map([[1, { durationMs: 125_000, toolCalls: 0, files: 0, added: 0, removed: 0, tests: null, slowest: null }]]),
+    })
+    const view = render(<h.ChatView {...h.props} />)
+    expect(view.container.querySelector('[data-turn-report]')?.textContent).toBe('本轮小结用时 2分5秒0 次工具调用')
+  })
+
   it('the settled footer shows usage only in Detailed mode', () => {
     const first: AssistantMessageNode = {
       kind: 'assistant', seq: 2, time: 2_000, turn: 1, step: 1, blocks: [{ kind: 'text', text: 'mid' }],
@@ -3349,7 +3394,8 @@ describe('ChatView', () => {
     act(() => { vi.advanceTimersByTime(303_000) })
     expect(content.textContent).toMatch(/^深度求索中，用时 \d+小时\d+分\d+秒 ···$/)
     expect(content.textContent).not.toBe(hourlyText)
-    expect(view.getByRole('status').textContent).toBe('深度求索中')
+    // Five minutes without model progress passes the default two-minute threshold.
+    expect(view.getByRole('status').textContent).toBe('深度求索中 · 可能已卡住')
     view.unmount()
     expect(vi.getTimerCount()).toBe(0)
   }))

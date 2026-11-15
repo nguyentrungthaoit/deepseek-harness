@@ -55,6 +55,10 @@ Under `html[data-platform='darwin']` (set only by the desktop preload) the expan
 
 Scrollbars in the column are a pointer affordance: the shell rebinds the scrollbar indirection to `transparent` whenever the pointer is outside the column and keeps the thumb drawn for 2s after the pointer leaves, so a list nobody is pointing at carries no bar. The reservation that keeps rows from moving belongs to the scrolling region (ui-workspace), so revealing a thumb never reflows.
 
+### Attention notifications
+
+The sidebar watches the unified Session status. The tab title carries a `(N⚠) ` prefix while N Sessions wait on the user and is restored when none do. When the user turns on **Desktop notifications** in General settings (off by default; turning it on asks the browser for permission, and the choice is kept in this browser's local storage), a silent browser notification (`silent: true`) appears when a Session that is not the focused main view starts waiting on a new request or finishes running. A blocked or unsupported browser disables the toggle and says why. Errors are not notified: the global status carries no per-Session error.
+
 -----
 
 <a id="understand-the-implementation"></a>

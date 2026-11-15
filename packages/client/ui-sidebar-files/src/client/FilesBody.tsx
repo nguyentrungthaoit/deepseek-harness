@@ -8,21 +8,23 @@
  * anything else is shown but refuses to open. The header uses the shared
  * PathLabel for the root, followed by reload and workspace directory actions.
  */
-import { useEffect, useLayoutEffect, useRef } from 'react'
-import type { ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import clsx from 'clsx'
 import type { RemoteFailure } from '@deepseek-ai/dsh-api-remotes/client'
 import type {
-  PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore, TranslateNS,
+  InjectFace, PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore, TranslateNS,
 } from '@deepseek-ai/dsh-client-ui-slots'
 import {
   FileTypeIcon, IconFolderCloseRegular, IconFolderOpenRegular, IconRefreshOutlineRegular, Tooltip, classifyFileType,
-  IconPauseOutlineRegular, IconPlayOutlineRegular, PathLabel,
+  IconPauseOutlineRegular, IconPlayOutlineRegular, IconSparkleRegular, PathLabel,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { fileAddressFor } from '@deepseek-ai/dsh-util-workspace-path'
 import type { WorkspaceDirectoryEntry } from '@deepseek-ai/dsh-api-workspace-files/types'
 import { childPath } from './face.ts'
 import type { FilesInjected } from './face.ts'
+import { canonicalPath, intensityOf } from './file-activity.ts'
+import type { FileHeat } from './file-activity.ts'
 import type {} from './locales.ts'
 import type { FilesTabState, createFilesStore } from './store.ts'
 import css from './FilesBody.module.css'
@@ -32,7 +34,7 @@ export type FilesBodyProps =
   & PropsRuntime<'sidebar.right.pane.tab'>
   & PropsRenderSlots<'sidebar.right.tab.files.actions'>
   & PropsStore<ReturnType<typeof createFilesStore>>
-  & FilesInjected
+  & InjectFace<FilesInjected>
   & PropsLocale<'sidebarFiles'>
 
 /** Natural, case-insensitive name order, so `file2` precedes `file10`. */
@@ -71,10 +73,44 @@ export function failureLine(t: TranslateNS<'sidebarFiles'>, failure: RemoteFailu
 
 /** What every level shares: the tab's tree and the two gestures. */
 interface TreeContext {
+  /** Live heat by canonical path; empty when the heatmap is off. */
+  readonly heat: ReadonlyMap<string, FileHeat>
+  readonly now: number
+  readonly fadeMs: number
   readonly state: FilesTabState
   readonly onToggle: (parent: string, path: string) => void
   readonly onOpen: (path: string) => void
   readonly t: TranslateNS<'sidebarFiles'>
+}
+
+/**
+ * Say what the agent did to a file and how long ago.
+ * @param t - namespace-bound translate.
+ * @param heat - the file's record.
+ * @param now - epoch milliseconds.
+ * @returns the tooltip line, such as "Edited 2× · 30s ago".
+ */
+export function heatLabel(t: TranslateNS<'sidebarFiles'>, heat: FileHeat, now: number): string {
+  const seconds = Math.max(0, Math.floor((now - heat.at) / 1000))
+  const age = seconds < 5 ? t('age.now') : seconds < 60 ? t('age.seconds', { n: seconds }) : t('age.minutes', { n: Math.floor(seconds / 60) })
+  return t(`heat.${heat.kind}`, { count: heat.kind === 'read' ? heat.reads : heat.edits, age })
+}
+
+/**
+ * Re-render on a timer while any tint is still fading.
+ * @param active - whether a timer is needed.
+ * @param intervalMs - tick length.
+ * @returns the current epoch milliseconds, refreshed each tick.
+ */
+function useNow(active: boolean, intervalMs: number): number {
+  const [now, setNow] = useState(Date.now)
+  useEffect(() => {
+    if (!active) return
+    setNow(Date.now())
+    const id = setInterval(() => { setNow(Date.now()) }, intervalMs)
+    return () => { clearInterval(id) }
+  }, [active, intervalMs])
+  return now
 }
 
 /** One entry's row, and its children when it is an expanded directory. */
@@ -93,12 +129,19 @@ function Entry({ parent, entry, tree }: { parent: string; entry: WorkspaceDirect
     )
   }
   if (entry.type === 'file') {
+    const record = tree.heat.get(canonicalPath(path, tree.state.root))
+    const intensity = record === undefined ? 0 : intensityOf(record, tree.now, tree.fadeMs)
+    const hot = record !== undefined && intensity > 0
     return (
       <li className={css.item} data-files-entry="file" data-files-path={path}>
-        <button type="button" className={css.row} onClick={() => { tree.onOpen(path) }}>
-          <FileTypeIcon kind={classifyFileType(entry.name)} size={16} className={css.fileIcon} />
-          <span className={css.name}>{entry.name}</span>
-        </button>
+        <Tooltip label={hot ? () => heatLabel(tree.t, record, tree.now) : ''} side="bottom" delayMs={300} portal disabled={!hot}>
+          <button type="button" className={css.row} onClick={() => { tree.onOpen(path) }}
+            data-files-heat={hot ? record.kind : undefined}
+            style={hot ? { '--files-heat': intensity.toFixed(2) } as CSSProperties : undefined}>
+            <FileTypeIcon kind={classifyFileType(entry.name)} size={16} className={css.fileIcon} />
+            <span className={css.name}>{entry.name}</span>
+          </button>
+        </Tooltip>
       </li>
     )
   }
@@ -139,13 +182,24 @@ function Level({ path, tree }: { path: string; tree: TreeContext }): ReactNode {
 /** The file tree's body: the workspace root and whatever the reader has opened under it. */
 export function FilesBody({
   useTabInfo, sessionId, useSessions, useStore, actions,
-  start, refresh, setAutoRefresh, toggle, t, renderSlot,
+  start, refresh, setAutoRefresh, toggle, t, renderSlot, useFileActivity, heatFadeMs,
 }: FilesBodyProps): ReactNode {
   const { tab } = useTabInfo()
   useEffect(() => tab.actions.bindCommands({ refresh: () => { refresh(tab.id) } }), [tab.actions, tab.id, refresh])
   const { signal, actions: tabActions } = tab
   const cwd = useSessions(sessions => sessions.byId[sessionId]?.cwd)
   const state = useStore(store => store.byTab[tab.id])
+  const activity = useFileActivity(snapshot => snapshot.files)
+  const heatOn = state?.heatmap === true
+  const root = state?.root
+  const heat = useMemo(() => {
+    const byPath = new Map<string, FileHeat>()
+    if (!heatOn || root === undefined) return byPath
+    for (const [path, record] of activity) byPath.set(canonicalPath(path, root), record)
+    return byPath
+  }, [activity, heatOn, root])
+  const newest = useMemo(() => Math.max(0, ...[...heat.values()].map(record => record.at)), [heat])
+  const now = useNow(newest + heatFadeMs > Date.now(), Math.max(1000, Math.round(heatFadeMs / 60)))
   const bodyRef = useRef<HTMLDivElement>(null)
   const scrollTopRef = useRef(0)
   // Come back where the reader was: loaded levels outlive the body in the
@@ -181,7 +235,7 @@ export function FilesBody({
   }
   if (state === undefined) return null
   const tree: TreeContext = {
-    state,
+    state, heat, now, fadeMs: heatFadeMs,
     onToggle: (parent, path) => { toggle(tab.id, parent, path, state.expanded, signal) },
     // Every row is under the tree's root, so its address is session-relative.
     onOpen: (path) => { tabActions.openResource(fileAddressFor(sessionId, state.root, path)) },
@@ -212,6 +266,12 @@ export function FilesBody({
             onClick={reload}
           >
             <IconRefreshOutlineRegular />
+          </button>
+        </Tooltip>
+        <Tooltip label={t(state.heatmap ? 'heatmap.disable' : 'heatmap.enable')} side="bottom" delayMs={500}>
+          <button type="button" className={css.tool} aria-label={t('heatmap')} aria-pressed={state.heatmap}
+            data-files-heatmap onClick={() => { actions.heatmap(tab.id, !state.heatmap) }}>
+            <IconSparkleRegular />
           </button>
         </Tooltip>
         {renderSlot('sidebar.right.tab.files.actions', {

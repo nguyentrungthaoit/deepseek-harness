@@ -39,68 +39,54 @@ describe('TodoPanel', () => {
     expect(container.innerHTML).toBe('')
   })
 
-  it('starts collapsed with the per-status count summary visible', () => {
+  it('starts expanded with the done/total badge and a progress bar', () => {
     render(<TodoPanel todos={LIST} t={t} />)
     expect(screen.getByTestId('todo-panel')).toBeTruthy()
     expect(screen.getByText('任务')).toBeTruthy()
-    expect(screen.getByText('1 已完成 · 1 进行中 · 1 待处理')).toBeTruthy()
-    expect(screen.getByRole('button', { expanded: false })).toBeTruthy()
-    expect(screen.queryByRole('list')).toBeNull()
+    expect(screen.getByTestId('todo-count').textContent).toBe('1/3')
+    expect(screen.getByRole('button', { expanded: true })).toBeTruthy()
+    expect(screen.getAllByRole('listitem')).toHaveLength(3)
+    const bar = screen.getByRole('progressbar')
+    expect(bar.getAttribute('aria-valuenow')).toBe('1')
+    expect(bar.getAttribute('aria-valuemax')).toBe('3')
   })
 
-  it('omits the completed segment while nothing is done yet', () => {
-    render(<TodoPanel todos={[
-      { content: '写组件', status: 'in_progress' },
-      { content: '补测试', status: 'pending' },
-    ]} t={t} />)
-    expect(screen.getByText('1 进行中 · 1 待处理')).toBeTruthy()
-    expect(screen.queryByText(/已完成/)).toBeNull()
-  })
-
-  it('expands to show one row per item with its status glyph', () => {
+  it('shows one row per item with its status glyph and highlights the current step', () => {
     render(<TodoPanel todos={LIST} t={t} />)
-    fireEvent.click(screen.getByRole('button', { expanded: false }))
     const items = screen.getAllByRole('listitem')
     expect(items.map(li => li.getAttribute('data-status'))).toEqual(['completed', 'in_progress', 'pending'])
-    expect(screen.getByText('搭骨架')).toBeTruthy()
-    expect(screen.getByText('写组件')).toBeTruthy()
+    expect(items.map(li => li.getAttribute('data-current'))).toEqual([null, 'true', null])
     expect(items.map(li => li.querySelector('[data-state]')?.getAttribute('data-state')))
       .toEqual(['done', 'ongoing', 'idle'])
     expect(screen.getAllByRole('img').map(node => node.getAttribute('aria-label')))
       .toEqual(['已完成', '进行中', '待处理'])
   })
 
-  it('collapse hides an expanded list; expand restores; header keeps the count summary', () => {
+  it('collapsing hides the list and surfaces the current step in the header; expanding restores', () => {
     render(<TodoPanel todos={LIST} t={t} />)
-    fireEvent.click(screen.getByRole('button', { expanded: false }))
-    const header = screen.getByRole('button', { expanded: true })
-    fireEvent.click(header)
+    fireEvent.click(screen.getByRole('button', { expanded: true }))
     expect(screen.queryByRole('list')).toBeNull()
-    // Collapsed header is title + progress only (no in-progress content hint).
-    expect(screen.getByText('1 已完成 · 1 进行中 · 1 待处理')).toBeTruthy()
-    expect(screen.queryByText('写组件')).toBeNull()
+    expect(screen.getByText('写组件')).toBeTruthy()
+    expect(screen.getByTestId('todo-count').textContent).toBe('1/3')
     fireEvent.click(screen.getByRole('button', { expanded: false }))
     expect(screen.getAllByRole('listitem')).toHaveLength(3)
   })
 
-  it('marks every parallel active item, and counts them all in the header', () => {
+  it('marks the first of several parallel active items as current and counts done only', () => {
     render(<TodoPanel todos={PARALLEL} t={t} />)
-    fireEvent.click(screen.getByRole('button', { expanded: false }))
-    // An unconditional in-progress cap would make this list unreachable: three
-    // items carry the in-progress glyph at once, and the header counts all three.
-    const statuses = screen.getAllByRole('listitem').map(li => li.getAttribute('data-status'))
-    expect(statuses.filter(s => s === 'in_progress')).toHaveLength(3)
-    expect(screen.getByText('跑后台构建')).toBeTruthy()
-    expect(screen.getByText('读源码')).toBeTruthy()
-    expect(screen.getByText('1 已完成 · 3 进行中 · 1 待处理')).toBeTruthy()
+    const items = screen.getAllByRole('listitem')
+    expect(items.filter(li => li.getAttribute('data-status') === 'in_progress')).toHaveLength(3)
+    expect(items.map(li => li.getAttribute('data-current'))).toEqual([null, 'true', null, null, null])
+    expect(screen.getByTestId('todo-count').textContent).toBe('1/5')
   })
 
-  it('an all-completed list collapses the summary to the done count alone', () => {
+  it('an all-completed list shows a full count and no current step', () => {
     render(<TodoPanel todos={[{ content: '都完了', status: 'completed' }]} t={t} />)
-    expect(screen.getByRole('button', { expanded: false })).toBeTruthy()
+    expect(screen.getByTestId('todo-count').textContent).toBe('1/1')
+    expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('1')
+    expect(screen.getByRole('listitem').getAttribute('data-current')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { expanded: true }))
     expect(screen.queryByText('都完了')).toBeNull()
-    expect(screen.getByText('1 已完成')).toBeTruthy()
-    expect(screen.queryByText(/进行中|待处理/)).toBeNull()
   })
 })
 
@@ -118,7 +104,7 @@ describe('TodoDock', () => {
     // Capability absent (no baseline/frame yet) renders nothing.
     expect(screen.queryByTestId('todo-panel')).toBeNull()
     act(() => { store.set({ value: LIST }) })
-    expect(screen.getByText('1 已完成 · 1 进行中 · 1 待处理')).toBeTruthy()
+    expect(screen.getByTestId('todo-count').textContent).toBe('1/3')
     // The pre-first-write whole value (null) retires the strip (the panel owns no data).
     act(() => { store.set({ value: null }) })
     expect(screen.queryByTestId('todo-panel')).toBeNull()

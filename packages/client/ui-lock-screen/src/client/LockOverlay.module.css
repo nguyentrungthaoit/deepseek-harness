@@ -1,0 +1,183 @@
+/* The scene is pixel art with a fixed palette, so the overlay keeps its own
+   colors in both themes instead of reading theme tokens. */
+.root {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: #07060f;
+  outline: none;
+  cursor: default;
+}
+
+.stage {
+  position: relative;
+  flex: none;
+}
+
+.canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+}
+
+/* Scene coordinates: 640x360 CSS pixels scaled with the canvas. */
+.layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 640px;
+  height: 360px;
+  transform-origin: 0 0;
+  color: #f0eeff;
+  font-family: ui-monospace, 'Cascadia Mono', Consolas, 'Noto Sans Mono CJK SC', monospace;
+  font-size: 9px;
+  line-height: 12px;
+}
+
+.dialog {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  left: 8px;
+  min-height: 52px;
+  box-sizing: border-box;
+  padding: 7px 12px;
+  border: 2px solid #2a2448;
+  background: #14122a;
+  box-shadow: 0 0 0 2px #0c0a18, inset 0 1px 0 #ff4fa8;
+}
+
+.tab {
+  position: absolute;
+  top: -12px;
+  left: 8px;
+  padding: 1px 6px;
+  border: 1px solid #ff4fa8;
+  background: #0c0a18;
+  color: #ff8ac8;
+  font-size: 8px;
+  letter-spacing: 1px;
+}
+
+.line {
+  overflow: hidden;
+  margin-right: 96px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  animation: reveal 1.4s steps(36) both;
+}
+
+.idle,
+.running {
+  color: #f0eeff;
+}
+
+.waiting {
+  color: #f86858;
+}
+
+.done {
+  color: #7ee0a0;
+}
+
+.summary {
+  margin-top: 4px;
+  color: #8a88b0;
+}
+
+.press {
+  position: absolute;
+  right: 12px;
+  bottom: 7px;
+  color: #f8d860;
+  animation: blink 1s steps(2) infinite;
+}
+
+.prompt {
+  display: block;
+  color: #ff8ac8;
+}
+
+.input {
+  display: block;
+  width: 100%;
+  margin: 4px 0;
+  padding: 2px 4px;
+  box-sizing: border-box;
+  border: none;
+  border-bottom: 1px solid #2a2448;
+  background: #0c0a18;
+  color: #f0eeff;
+  font: inherit;
+  letter-spacing: 2px;
+  outline: none;
+  caret-color: #f0eeff;
+}
+
+.input:focus-visible {
+  border-bottom-color: #ff4fa8;
+}
+
+.hint {
+  color: #5e5c84;
+}
+
+.trace {
+  overflow: hidden;
+  margin-bottom: 4px;
+  color: #8a88b0;
+  white-space: pre;
+  text-overflow: ellipsis;
+}
+
+.error {
+  color: #f86858;
+}
+
+.cause {
+  color: #f8a060;
+}
+
+.shake {
+  animation: shake 0.4s;
+}
+
+.ok {
+  text-align: center;
+}
+
+.okTitle {
+  color: #7ee0a0;
+  font-size: 14px;
+  line-height: 20px;
+  text-shadow: 1px 0 #14402a, -1px 0 #14402a, 0 1px #14402a, 0 -1px #14402a;
+}
+
+@keyframes reveal {
+  from { clip-path: inset(0 100% 0 0); }
+  to { clip-path: inset(0 0 0 0); }
+}
+
+@keyframes blink {
+  50% { opacity: 0; }
+}
+
+@keyframes shake {
+  20% { transform: translateX(-5px); }
+  40% { transform: translateX(5px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(3px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .line,
+  .press,
+  .shake {
+    animation: none;
+  }
+}

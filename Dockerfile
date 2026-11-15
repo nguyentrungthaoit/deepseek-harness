@@ -71,10 +71,30 @@ RUN apt-get update \
     'openpyxl==3.1.5' \
     'pypdf==6.19.0' \
     'pandas==2.3.3' \
-    'matplotlib==3.10.7'
+    'matplotlib==3.10.7' \
+    'python-pptx==1.0.2' \
+    'XlsxWriter==3.2.9'
+
+# The Web presets mount the Office skills and load_workspace_dependencies when
+# DSH_PRIMARY_RUNTIME names a payload: runtime.json plus dependencies/python.
+# The venv is that Python; the manifest records its version and distributions.
+RUN mkdir -p /opt/dsh-runtime/dependencies \
+  && ln -s /opt/dsh-py /opt/dsh-runtime/dependencies/python
+RUN /opt/dsh-py/bin/python3 <<'PY'
+import importlib.metadata, json, platform
+arch = {'x86_64': 'x64', 'aarch64': 'arm64'}[platform.machine()]
+packages = {d.metadata['Name']: d.version for d in importlib.metadata.distributions()}
+manifest = {
+    'desktopVersion': 'docker', 'platform': 'linux', 'arch': arch,
+    'python': platform.python_version(), 'pythonPackages': dict(sorted(packages.items())),
+}
+with open('/opt/dsh-runtime/runtime.json', 'w') as f:
+    json.dump(manifest, f, indent=2)
+PY
 
 # HOME is the mounted workspace in compose; keep matplotlib's cache out of it.
 ENV PATH="/opt/dsh-py/bin:${PATH}" \
+    DSH_PRIMARY_RUNTIME=/opt/dsh-runtime \
     MPLCONFIGDIR=/tmp/matplotlib \
     NODE_ENV=production \
     DSH_HOME=/data/dsh \

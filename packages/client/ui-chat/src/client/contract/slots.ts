@@ -15,13 +15,14 @@ import type { MarkdownFileMentions } from '@deepseek-ai/dsh-client-ui-primitives
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { createChatStore } from '../stores.ts'
 import type { ChatPresentationPolicy } from '../presentation-policy.ts'
+import type { StallWarningThresholds } from '../stall-warning.ts'
 import type { ToolCallId } from './store.ts'
 import type { ChatConversationViewNode, ChatNode, ChatNodeKind } from './chat-nodes.ts'
 import type {
   ChatNodeProcessSource, ChatNodeSource, ChatSnapshot, ChatTurnProcessPresentation,
 } from './snapshot.ts'
 import type { TurnProcessSpec } from './turn-process.ts'
-import type { PerformanceUsageMode } from '../../chat-settings.ts'
+import type { PerformanceUsageMode, TurnReportThreshold } from '../../chat-settings.ts'
 
 /** Selector hook over the current Conversation binding's Chat target. */
 export type UseChat = SnapshotSelectorHook<ChatSnapshot>
@@ -38,6 +39,12 @@ export type UseChatNodeProcess = KeyedSnapshotSelectorHook<ChatTurnProcessPresen
  * only components whose selected value changed.
  */
 export type UsePresentation = SnapshotSelectorHook<ChatPresentationPolicy>
+
+/** Selector hook over whether the running status shows live Turn details. */
+export type UseLiveActivity = SnapshotSelectorHook<boolean>
+
+/** Selector hook over the accepted running-status stall thresholds. */
+export type UseStallWarning = SnapshotSelectorHook<StallWarningThresholds>
 
 /** Where in a file an open should land. */
 export interface OpenFileOptions {
@@ -228,11 +235,23 @@ export interface PerformanceUsageInjected {
   }
 }
 
+/** Turn-report threshold source for the Settings row and the Turn tail. */
+export interface TurnReportInjected {
+  hooks: {
+    /** Accepted minimum Turn runtime, in seconds, for the report card; 0 turns it off. */
+    turnReport: ObservableSnapshot<TurnReportThreshold>
+  }
+}
+
 /** Business callbacks injected into the Chat view. */
 export interface ChatViewInjected {
   hooks: {
     /** Live presentation policy derived from the accepted work-details mode. */
     presentation: ObservableSnapshot<ChatPresentationPolicy>
+    /** Accepted thresholds after which the running status reports a possible stall. */
+    stallWarning: ObservableSnapshot<StallWarningThresholds>
+    /** Whether the running status shows live Tool-call, token, and reasoning details. */
+    liveActivity: ObservableSnapshot<boolean>
   }
   keyedHooks: {
     /** Resolve the stable source for one Chat Node key. */

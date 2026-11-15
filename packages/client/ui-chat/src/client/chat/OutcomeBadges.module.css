@@ -1,0 +1,53 @@
+.counts {
+  display: inline-flex;
+  flex: none;
+  gap: 4px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.added {
+  color: var(--dsw-alias-state-success-primary);
+}
+
+.removed {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.tests {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  padding: 0 6px;
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-interactive-bg-hover-solid);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.passed {
+  color: var(--dsw-alias-state-success-primary);
+}
+
+.failed {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.tests[data-failed] {
+  background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 12%, transparent);
+}
+
+.tests[data-failed] .failed {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .tests[data-failed] {
+    animation: failing-pulse 2s ease-in-out infinite;
+  }
+}
+
+@keyframes failing-pulse {
+  50% { opacity: 0.6; }
+}

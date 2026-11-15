@@ -137,6 +137,8 @@
     { "path": "./packages/client/ui-settings-general/tsconfig.client.json" },
     { "path": "./packages/client/ui-settings-models" },
     { "path": "./packages/client/ui-plugin-manager/tsconfig.client.json" },
+    { "path": "./packages/client/ui-lock-screen/tsconfig.client.json" },
+    { "path": "./packages/client/ui-activity/tsconfig.client.json" },
     { "path": "./packages/client/ui-mcp-manager/tsconfig.client.json" },
     { "path": "./packages/client/ui-settings-plugin-inventory" },
     { "path": "./packages/client/locale/tsconfig.client.json" },

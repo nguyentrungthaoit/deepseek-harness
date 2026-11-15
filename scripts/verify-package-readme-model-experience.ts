@@ -157,6 +157,8 @@ const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
   'packages/client/ui-settings-models': { kind: 'none', reason: 'Browser-side UI plugin layer; registers nothing model-facing.' },
   'packages/client/ui-plugin-manager': { kind: 'none', reason: 'Browser-side management surface; registers nothing model-facing.' },
   'packages/client/ui-mcp-manager': { kind: 'none', reason: 'Browser-side management surface; registers nothing model-facing.' },
+  'packages/client/ui-lock-screen': { kind: 'none', reason: 'Browser-only overlay; the password and status display never enter a model request.' },
+  'packages/client/ui-activity': { kind: 'none', reason: 'Browser-only Sidebar view of Session state; registers nothing model-facing.' },
   'packages/mcp/mcp-manager': { kind: 'none', reason: 'Web management of MCP server rows reports connection state to the Web screen and registers no prompt, tool, or session event.' },
   'packages/client/ui-settings-plugin-inventory': { kind: 'none', reason: 'Browser-side inventory projection; registers nothing model-facing.' },
   'packages/client/locale': { kind: 'none', reason: 'Browser-side UI plugin layer; registers nothing model-facing.' },

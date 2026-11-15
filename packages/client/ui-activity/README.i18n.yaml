@@ -1,0 +1,43 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/client/ui-activity/README.md
+/:
+  en: 90d774d69128505c
+  zh: 1ee18e986bc7f7f6
+/deepseek-ai-dsh-client-ui-activity:
+  en: 09ff0d7a045362d0
+  zh: ba6509a8c360d6fe
+/deepseek-ai-dsh-client-ui-activity/summary:
+  en: ed1b1f6c130ccbe4
+  zh: ae12aba8bb73b923
+/deepseek-ai-dsh-client-ui-activity/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 01e3cf191d4bd47d
+/deepseek-ai-dsh-client-ui-activity/use-this-package:
+  en: 4316d682c7062958
+  zh: be111f5619d519ba
+/deepseek-ai-dsh-client-ui-activity/use-this-package/what-to-expect:
+  en: dc4c1b47c7df4876
+  zh: 22f5c2a582ffccf8
+/deepseek-ai-dsh-client-ui-activity/use-this-package/what-to-expect/speed-history-for-other-plugins:
+  en: fb00623f101b4005
+  zh: b8e58ecde38f7b3e
+/deepseek-ai-dsh-client-ui-activity/understand-the-implementation:
+  en: 551f5af0340eea3c
+  zh: f3a19079f0a35432
+/deepseek-ai-dsh-client-ui-activity/further-exploration:
+  en: d5f19bd005d3003f
+  zh: ec40f23178c1e674
+/deepseek-ai-dsh-client-ui-activity/model-experience:
+  en: ea7b605f23b06dac
+  zh: d78a087aceb8d228
+/deepseek-ai-dsh-client-ui-activity/model-experience/kv-cache-effect:
+  en: ca75c51c89c2c9b0
+  zh: ee6d77f08dfbe4ec
+/deepseek-ai-dsh-client-ui-activity/known-limitations-and-deferred-work:
+  en: a57365985bddb358
+  zh: 86543c83571106d8
+/deepseek-ai-dsh-client-ui-activity/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: 3bb0c20c93f16f98

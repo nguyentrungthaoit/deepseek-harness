@@ -17,10 +17,11 @@ const TAB = 'tab-1' as TabId
 
 const LEVEL: DirLevel = { entries: [{ name: 'src', type: 'directory' }], truncated: false }
 
-function mount() {
+function mount(heatmap = true) {
   const instance = createFilesStore().create()
   const script = scriptedList()
-  const face = filesFace(script.list, script.watch)(SESSION, instance.actions)
+  const activity = { getSnapshot: () => ({ files: new Map() }), subscribe: () => () => {} }
+  const face = filesFace(script.list, script.watch, { enabled: heatmap, fadeMs: 5000, activity: () => activity })(SESSION, instance.actions)
   const controller = new AbortController()
   onTestFinished(async () => {
     controller.abort()
@@ -30,6 +31,16 @@ function mount() {
 }
 
 describe('filesFace', () => {
+  it.each([[true, true], [false, false]])('starts a tree with the heatmap default %s as %s, and carries the fade and activity source', async (enabled, expected) => {
+    const h = mount(enabled)
+    h.face.start(TAB, ROOT, h.controller.signal)
+    expect(h.snapshot()?.heatmap).toBe(expected)
+    expect(h.face.heatFadeMs).toBe(5000)
+    expect(h.face.hooks.fileActivity.getSnapshot().files.size).toBe(0)
+    await h.watches.ready(ROOT)
+    await h.settle({ ok: true, value: LEVEL })
+  })
+
   it.each(['/', 'C:/', 'C:\\', '/work/app/'])('expands a child of the exact root key %s', async (root) => {
     const h = mount()
     const child = childPath(root, 'src')
@@ -50,7 +61,7 @@ describe('filesFace', () => {
     expect(stream.sessionId).toBe(SESSION)
     expect(stream.signal.aborted).toBe(false)
     expect(list).not.toHaveBeenCalled()
-    expect(snapshot()).toEqual({ root: ROOT, expanded: [ROOT], levels: {}, scrollTop: 0, autoRefresh: true })
+    expect(snapshot()).toEqual({ root: ROOT, expanded: [ROOT], levels: {}, scrollTop: 0, autoRefresh: true, heatmap: true })
     await stream.deliver('ready')
     expect(list).toHaveBeenCalledWith(SESSION, ROOT, stream.signal)
     expect(snapshot()!.levels[ROOT]).toEqual({ kind: 'loading' })

@@ -176,3 +176,35 @@
 .titleIcon {
   flex: none;
 }
+
+/* Agent activity: a row tinted by what the agent did to its file, fading out
+   as --files-heat (1 at the touch, 0 when it is over) falls. Read, edit, and
+   create ride the business (blue), warn (amber), and success (green) states. */
+.row[data-files-heat] {
+  --files-heat-color: var(--dsw-alias-state-business-primary);
+  --files-heat-alpha: calc(var(--files-heat) * 26%);
+
+  background: color-mix(in srgb, var(--files-heat-color) var(--files-heat-alpha), transparent);
+  transition: background-color 1s linear;
+}
+
+.row[data-files-heat='edit'] {
+  --files-heat-color: var(--dsw-alias-state-warn-primary);
+}
+
+.row[data-files-heat='create'] {
+  --files-heat-color: var(--dsw-alias-state-success-primary);
+}
+
+.row[data-files-heat]:hover {
+  background: color-mix(in srgb, var(--files-heat-color) 36%, var(--dsw-alias-interactive-bg-hover));
+}
+
+/* No animation: the tint holds at one steady strength until the fade is over. */
+@media (prefers-reduced-motion: reduce) {
+  .row[data-files-heat] {
+    --files-heat-alpha: 22%;
+
+    transition: none;
+  }
+}

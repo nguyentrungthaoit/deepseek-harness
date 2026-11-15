@@ -12,6 +12,8 @@ kind: "package-reference"
 
 运行状态来自 Host 列表基线或状态事件。Subagent 目录行和已保留子会话的 fallback 行不会建立运行状态；主视图引用仍会确认完成提醒。
 
+`sessionActivity(status)` 把 Session 归为 `waiting`、`running`、`unread` 或 `idle`；`SESSION_ACTIVITY_RANK` 让 `waiting` 排在最前。
+
 ## 目录
 
 - [模型体验](#model-experience)

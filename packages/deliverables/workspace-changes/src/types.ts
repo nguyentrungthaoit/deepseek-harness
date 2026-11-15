@@ -75,6 +75,32 @@ export type WorkspaceFileDiff =
   /** A side larger than the plugin's `maxFileBytes`; no lines are served. */
   | { kind: 'oversized'; path: string; display: string }
 
+/** One commit of the repository enclosing a Session working directory. */
+export interface WorkspaceCommit {
+  /** Full object id. */
+  hash: string
+  /** Full object ids of the parents, first parent first; empty for a root commit. */
+  parents: string[]
+  /** Commit time in Unix epoch ms. */
+  time: number
+  /** First line of the message. */
+  subject: string
+}
+
+/** The latest commits and the uncommitted changes of the repository enclosing a Session working directory. */
+export interface WorkspaceRepository {
+  /** Checked-out branch name; null for a detached HEAD or a repository without commits. */
+  branch: string | null
+  /** Commits reachable from HEAD in topological order, newest first, at most the requested limit. */
+  commits: WorkspaceCommit[]
+  /** Files that differ from HEAD in the work tree, including staged and untracked files. */
+  files: number
+  /** Lines added over tracked changes against HEAD; untracked files count as files only. */
+  added: number
+  /** Lines deleted over tracked changes against HEAD. */
+  deleted: number
+}
+
 /** Serves the summaries and file comparisons the recorder keeps for live Sessions. */
 export interface WorkspaceChanges {
   /**
@@ -94,6 +120,16 @@ export interface WorkspaceChanges {
    * @throws when a snapshot read fails for a live Session.
    */
   diff(sessionId: SessionId, seq: number, index: number, signal: AbortSignal): Promise<WorkspaceFileDiff | undefined>
+  /**
+   * Read the latest commits and the uncommitted change counts of a live Session's repository. Read-only.
+   * @param sessionId - the Session whose working directory is inspected.
+   * @param limit - commits requested; clamped to the plugin's `maxCommits`.
+   * @param signal - cancels the git reads.
+   * @returns the repository, or undefined when the Session is not live, has no working directory, is a subagent,
+   * is outside a git repository, or git is unavailable.
+   * @throws when a git read fails or times out.
+   */
+  repository(sessionId: SessionId, limit: number, signal: AbortSignal): Promise<WorkspaceRepository | undefined>
 }
 
 declare module '@deepseek-ai/dsh-session/types' {

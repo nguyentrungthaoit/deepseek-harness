@@ -82,6 +82,39 @@ export interface TurnTokenUsage {
   readonly routes?: readonly TurnTokenUsageRoute[]
 }
 
+/** Line totals of one settled file edit, counted as the edit's diff card counts them. */
+export interface DiffStat {
+  /** File path as the Tool result reports it. */
+  readonly path: string
+  readonly added: number
+  readonly removed: number
+}
+
+/** Counts from one recognized test-runner summary; todo cases count as skipped. */
+export interface TestTally {
+  readonly passed: number
+  readonly failed: number
+  readonly skipped: number
+}
+
+/** End-of-Turn summary derived from the Turn's own lifecycle, Tool-call, and Tool-result events. */
+export interface TurnReport {
+  /** Milliseconds from `turn/start` to `turn/end`. */
+  readonly durationMs: number
+  /** Root Tool calls dispatched in the Turn. */
+  readonly toolCalls: number
+  /** Distinct files with a measured edit. */
+  readonly files: number
+  /** Lines added across the measured edits. */
+  readonly added: number
+  /** Lines removed across the measured edits. */
+  readonly removed: number
+  /** Latest recognized test-runner summary in the Turn's shell output; null when none was recognized. */
+  readonly tests: TestTally | null
+  /** Longest settled Tool call; null when no call settled with its dispatch in the window. */
+  readonly slowest: { readonly name: string; readonly durationMs: number } | null
+}
+
 /** Turn-local footer row that owns actions and optional feature contributions. */
 export interface TurnTailChatData {
   readonly turn: number
@@ -93,6 +126,8 @@ export interface TurnTailChatData {
   readonly branchUnavailable: boolean
   /** Exact per-Turn accounting; absent when the loaded evidence is incomplete. */
   readonly tokenUsage?: TurnTokenUsage
+  /** Summary for a Turn whose `turn/start` is loaded and that ran at least the shortest report threshold. */
+  readonly report?: TurnReport
 }
 
 /** Turn-level process disclosure projected before the finalized answer. */

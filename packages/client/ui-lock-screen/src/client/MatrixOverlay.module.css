@@ -1,0 +1,215 @@
+/* The Matrix style keeps its phosphor-green palette in both themes instead of
+   reading theme tokens. Class names mirror LockOverlay.module.css, so the
+   overlay renders one dialog tree against either module. */
+.root {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 16px;
+  background: #000400;
+  outline: none;
+  cursor: default;
+  color: #b8ffcc;
+  font-family: ui-monospace, 'Cascadia Mono', Consolas, 'Noto Sans Mono CJK SC', monospace;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* Scanlines and a vignette over the rain, under the terminal. */
+.root::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(to bottom, rgb(0 0 0 / 0%) 0 2px, rgb(0 0 0 / 22%) 2px 3px),
+    radial-gradient(ellipse at center, rgb(0 0 0 / 0%) 45%, rgb(0 0 0 / 75%) 100%);
+}
+
+.terminal {
+  position: relative;
+  z-index: 1;
+  width: min(560px, 100%);
+  box-sizing: border-box;
+  border: 1px solid #00c853;
+  background: rgb(0 10 3 / 88%);
+  box-shadow: 0 0 24px rgb(0 255 102 / 25%), inset 0 0 18px rgb(0 255 102 / 8%);
+  text-shadow: 0 0 6px rgb(0 255 102 / 55%);
+}
+
+.bar {
+  padding: 4px 12px;
+  border-bottom: 1px solid #00c853;
+  background: #00331a;
+  color: #66ff99;
+  font-size: 12px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+.dialog {
+  position: relative;
+  min-height: 96px;
+  padding: 14px 16px 16px;
+}
+
+.status {
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px dashed #00632e;
+}
+
+.tab {
+  color: #00e676;
+  font-size: 11px;
+  letter-spacing: 3px;
+}
+
+.wake {
+  overflow: hidden;
+  margin: 6px 0 2px;
+  color: #ccffdd;
+  white-space: nowrap;
+  animation: reveal 2.2s steps(40) both;
+}
+
+.prompt::after {
+  content: '\2588';
+  margin-left: 2px;
+  animation: blink 1s steps(2) infinite;
+}
+
+.line {
+  overflow: hidden;
+  margin-top: 6px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  animation: reveal 1.4s 0.6s steps(36) both;
+}
+
+.line::before {
+  content: '> ';
+  color: #00e676;
+}
+
+.idle,
+.running {
+  color: #b8ffcc;
+}
+
+.waiting {
+  color: #ff6b6b;
+  text-shadow: 0 0 6px rgb(255 74 74 / 60%);
+}
+
+.done {
+  color: #ffffff;
+}
+
+.summary {
+  margin-top: 4px;
+  color: #4caf73;
+}
+
+.prompt {
+  display: block;
+  color: #66ff99;
+}
+
+.prompt::before {
+  content: '> ';
+}
+
+.input {
+  display: block;
+  width: 100%;
+  margin: 8px 0;
+  padding: 6px 8px;
+  box-sizing: border-box;
+  border: 1px solid #00632e;
+  background: #000a03;
+  color: #ccffdd;
+  font: inherit;
+  letter-spacing: 4px;
+  outline: none;
+  caret-color: #00ff66;
+  text-shadow: inherit;
+}
+
+.input:focus-visible {
+  border-color: #00ff66;
+  box-shadow: 0 0 10px rgb(0 255 102 / 35%);
+}
+
+.hint {
+  color: #2e8b57;
+  font-size: 12px;
+}
+
+.trace {
+  margin-bottom: 8px;
+}
+
+.error {
+  color: #ff4a4a;
+  letter-spacing: 3px;
+  text-shadow: 0 0 8px rgb(255 74 74 / 70%);
+}
+
+.cause {
+  color: #ff9e80;
+}
+
+.shake {
+  animation: glitch 0.4s;
+}
+
+.ok {
+  padding: 8px 0;
+  text-align: center;
+}
+
+.okTitle {
+  color: #ffffff;
+  font-size: 22px;
+  line-height: 32px;
+  letter-spacing: 6px;
+  text-shadow: 0 0 12px #00ff66, 0 0 2px #00ff66;
+}
+
+@keyframes reveal {
+  from { clip-path: inset(0 100% 0 0); }
+  to { clip-path: inset(0 0 0 0); }
+}
+
+@keyframes blink {
+  50% { opacity: 0; }
+}
+
+@keyframes glitch {
+  20% { transform: translate(-4px, 1px); filter: hue-rotate(90deg); }
+  40% { transform: translate(4px, -1px); }
+  60% { transform: translate(-3px, 0); filter: none; }
+  80% { transform: translate(2px, 1px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wake,
+  .prompt::after,
+  .line,
+  .shake {
+    animation: none;
+  }
+}

@@ -48,23 +48,21 @@ function statusLabel(status: TodoItem['status'], t: TodoPanelProps['t']): string
   }
 }
 
-/** Header summary: "·"-joined per-status counts; zero-count segments are omitted as noise (a non-empty list keeps at least one). */
-function progressLabel(todos: readonly TodoItem[], t: TodoPanelProps['t']): string {
-  const done = todos.filter(item => item.status === 'completed').length
-  const active = todos.filter(item => item.status === 'in_progress').length
-  const pending = todos.length - done - active
-  // En spaces (U+2002): HTML collapses runs of ASCII spaces, so widening the
-  // separator breathing room needs a literal wide space.
-  return [
-    ...done > 0 ? [t('todo.progress.done', { done })] : [],
-    ...active > 0 ? [t('todo.progress.active', { active })] : [],
-    ...pending > 0 ? [t('todo.progress.pending', { pending })] : [],
-  ].join('\u2002·\u2002')
+/** Count of finished steps — the numerator of the header's "done/total" badge. */
+function completedCount(todos: readonly TodoItem[]): number {
+  return todos.filter(item => item.status === 'completed').length
 }
 
+/**
+ * Plan checklist pinned above the composer: a "done/total" badge, a progress bar, the current
+ * step (first `in_progress` item) in the header and highlighted in the list. Starts expanded so
+ * the plan is visible while the model works; the header toggles it. Renders nothing for an empty list.
+ */
 export function TodoPanel({ todos, t }: TodoPanelProps) {
-  const [collapsed, setCollapsed] = useState(true)
+  const [collapsed, setCollapsed] = useState(false)
   if (todos.length === 0) return null
+  const done = completedCount(todos)
+  const current = todos.find(item => item.status === 'in_progress')
 
   return (
     <section className={css.root} data-testid="todo-panel" aria-label={t('todo.title')}>
@@ -77,15 +75,26 @@ export function TodoPanel({ todos, t }: TodoPanelProps) {
         >
           <span className={css.lead} aria-hidden><IconChecklistOutlineRegular /></span>
           <span className={css.title}>{t('todo.title')}</span>
-          <span className={css.progress}>{progressLabel(todos, t)}</span>
+          <span className={css.count} data-testid="todo-count">{t('todo.count', { done, total: todos.length })}</span>
+          <span className={css.current}>{collapsed ? current?.content : undefined}</span>
           <span className={css.chevron} aria-hidden>
             {collapsed ? <IconChevronUpOutlineRegular /> : <IconChevronDownOutlineRegular />}
           </span>
         </button>
+        <div
+          className={css.bar}
+          role="progressbar"
+          aria-label={t('todo.title')}
+          aria-valuemin={0}
+          aria-valuemax={todos.length}
+          aria-valuenow={done}
+        >
+          <span className={css.barFill} style={{ width: `${(done / todos.length) * 100}%` }} />
+        </div>
         {!collapsed && (
           <ul className={css.list}>
             {todos.map(item => (
-              <li key={item.content} className={css.item} data-status={item.status}>
+              <li key={item.content} className={css.item} data-status={item.status} data-current={item === current ? 'true' : undefined}>
                 <span className={css.glyph} role="img" aria-label={statusLabel(item.status, t)}>
                   <StateDot state={statusDotState(item.status)} />
                 </span>

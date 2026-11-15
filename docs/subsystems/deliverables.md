@@ -170,6 +170,17 @@ summary(sessionId: SessionId, seq: number): WorkspaceChangesSummary | undefined
  * @throws when a snapshot read fails for a live Session.
  */
 diff(sessionId: SessionId, seq: number, index: number, signal: AbortSignal): Promise<WorkspaceFileDiff | undefined>
+
+/**
+ * Read the latest commits and the uncommitted change counts of a live Session's repository. Read-only.
+ * @param sessionId - the Session whose working directory is inspected.
+ * @param limit - commits requested; clamped to the plugin's `maxCommits`.
+ * @param signal - cancels the git reads.
+ * @returns the repository, or undefined when the Session is not live, has no working directory, is a subagent,
+ * is outside a git repository, or git is unavailable.
+ * @throws when a git read fails or times out.
+ */
+repository(sessionId: SessionId, limit: number, signal: AbortSignal): Promise<WorkspaceRepository | undefined>
 ```
 
 Types: [SessionId](core.md)

@@ -12,6 +12,8 @@ Use this package to expose Session catalog, retain information, and unified UI s
 
 Running status comes from Host list baselines or status events. Subagent catalog rows and retained subagent fallback rows do not establish running status; main view references still acknowledge completions.
 
+`sessionActivity(status)` classifies a Session as `waiting`, `running`, `unread`, or `idle`; `SESSION_ACTIVITY_RANK` sorts `waiting` first.
+
 ## Table of Contents
 
 - [Model Experience](#model-experience)

@@ -13,8 +13,10 @@ import type { Mock } from 'vitest'
 import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import { MutableSessionEventSource } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SidebarRightTabActions } from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import { filesFace } from '../src/client/face.ts'
+import { FileActivityTracker } from '../src/client/file-activity.ts'
 import type { FilesInjected } from '../src/client/face.ts'
 import { FilesBody } from '../src/client/FilesBody.tsx'
 import type { FilesBodyProps } from '../src/client/FilesBody.tsx'
@@ -27,6 +29,7 @@ import type { TabId } from '@deepseek-ai/dsh-client-ui-dockkit'
 export const SESSION = 's-test' as SessionId
 export const ROOT = '/work/app'
 export const TAB = 'tab-1' as TabId
+export const FADE_MS = 60_000
 
 /** Test-local selector hook over a framework-neutral store instance. */
 function hookOf<T>(inst: { subscribe: (fn: () => void) => () => void; getSnapshot: () => T }) {
@@ -52,6 +55,8 @@ export interface Mounted {
   readonly instance: FilesStoreInstance
   readonly script: ScriptedList
   readonly face: FilesInjected
+  /** The session's event window, which the heatmap derives from. */
+  readonly events: MutableSessionEventSource
   readonly controller: AbortController
   readonly tabActions: MockedTabActions
   /** Render a fresh body over the same store and face, as a tab switch remounts it. */
@@ -59,10 +64,13 @@ export interface Mounted {
 }
 
 /** One store instance, one face, one owner share. */
-function harness(cwd: string | null, refreshShortcut?: ReturnType<FilesBodyProps['useTabInfo']>['tab']['refreshShortcut']) {
+function harness(cwd: string | null, refreshShortcut?: ReturnType<FilesBodyProps['useTabInfo']>['tab']['refreshShortcut'], heatmap = true) {
   const instance = createFilesStore().create()
   const script = scriptedList()
-  const face = filesFace(script.list, script.watch)(SESSION, instance.actions)
+  const events = new MutableSessionEventSource()
+  const tracker = new FileActivityTracker(events, FADE_MS)
+  const heat = { enabled: heatmap, fadeMs: FADE_MS, activity: () => tracker }
+  const face = filesFace(script.list, script.watch, heat)(SESSION, instance.actions)
   const controller = new AbortController()
   onTestFinished(async () => {
     controller.abort()
@@ -93,9 +101,10 @@ function harness(cwd: string | null, refreshShortcut?: ReturnType<FilesBodyProps
     useStore: hookOf(instance),
     actions: instance.actions,
     ...face,
+    useFileActivity: hookOf(face.hooks.fileActivity),
     t: makeTranslate(zh),
   }
-  return { instance, script, face, controller, tabActions, shared }
+  return { instance, script, face, events, controller, tabActions, shared }
 }
 
 /**
@@ -103,8 +112,8 @@ function harness(cwd: string | null, refreshShortcut?: ReturnType<FilesBodyProps
  * @param cwd - the session's working directory as `useSessions` reports it; `null` for a session without one.
  * @param refreshShortcut - effective binding advertised by the tab owner.
  */
-export function mountBody(cwd: string | null = ROOT, refreshShortcut?: ReturnType<FilesBodyProps['useTabInfo']>['tab']['refreshShortcut']): Mounted {
-  const { shared, ...hands } = harness(cwd, refreshShortcut)
+export function mountBody(cwd: string | null = ROOT, refreshShortcut?: ReturnType<FilesBodyProps['useTabInfo']>['tab']['refreshShortcut'], heatmap = true): Mounted {
+  const { shared, ...hands } = harness(cwd, refreshShortcut, heatmap)
   const view = render(<FilesBody {...shared as unknown as FilesBodyProps} />)
   return { ...hands, view, remount: () => render(<FilesBody {...shared as unknown as FilesBodyProps} />) }
 }

@@ -469,6 +469,27 @@ describe('deriveGroups', () => {
     ])
   })
 
+  it('floats unpinned Sessions waiting on the user behind the pinned block', () => {
+    const sessions = list(summary('a', 4), summary('b', 3), summary('c', 2), summary('d', 1), summary('e', 0))
+    const statuses: SessionStatusSnapshot = new Map([
+      [sid('d'), status({ kind: 'question' } as SessionPendingInteraction)],
+      [sid('e'), status({ kind: 'approval' } as SessionPendingInteraction)],
+      [sid('c'), status(undefined, { running: true })],
+    ])
+    const groups = deriveGroups(
+      sessions, [workspace('first', ['a', 'b', 'c', 'd', 'e'])],
+      rowState({ pinned: ['b', 'e'], archived: ['d'], archivedFilter: 'show' }),
+      statuses, view(['first']),
+    )
+    // Pinned e keeps the pinned block, archived d never floats, running c is not waiting.
+    expect(groups[0]!.sessions.map(node => node.id)).toEqual(['b', 'e', 'a', 'c', 'd'].map(sid))
+    const floated = deriveGroups(
+      sessions, [workspace('first', ['a', 'b', 'c', 'd', 'e'])], rowState({ pinned: ['b'] }),
+      statuses, view(['first']),
+    )
+    expect(floated[0]!.sessions.map(node => node.id)).toEqual(['b', 'd', 'e', 'a', 'c'].map(sid))
+  })
+
   it('keeps shown archived rows in place and never sections an archived pin', () => {
     const sessions = list(summary('top', 3), summary('mid', 2), summary('low', 1))
     const groups = deriveGroups(
@@ -691,6 +712,17 @@ describe('deriveSearchResults', () => {
       ],
       hasMore: false,
     })
+  })
+
+  it('matches Session id substrings case-insensitively', () => {
+    const idHit = summary('3f9a2c71-session', 2)
+    idHit.title = idHit.displayTitle = 'Ordinary title'
+    const other = summary('b7e0d4aa-session', 1)
+    other.title = other.displayTitle = 'Another title'
+    const result = deriveSearchResults(
+      list(idHit, other), [], '3F9A2C', noArchive, 'default', noAttention, { items: [], hasMore: false }, 10,
+    )
+    expect(result.items.map(item => [item.id, item.title])).toEqual([[idHit.id, 'Ordinary title']])
   })
 
   it('excludes blank sessions from search regardless of query or content hits', () => {

@@ -229,6 +229,26 @@ describe('Session queue commands', () => {
     await ctx.fiber.dispose()
   })
 
+  it('reorders and starts only user-written next-turn items', async () => {
+    const { ctx, controller, agent, inbox } = await commandHarness()
+    const nextStep = createUserMessage({ content: [{ type: 'text', text: 'step' }], source: { kind: 'user' } })
+    const context = createUserMessage({ content: [{ type: 'text', text: 'context' }], source: { kind: 'test' } })
+    inbox.append('next-step', nextStep)
+    inbox.append('next-turn', context)
+    for (const [item, action] of [
+      [nextStep, { kind: 'move', direction: 'up' }],
+      [context, { kind: 'move', direction: 'down' }],
+      [context, { kind: 'run' }],
+    ] as const) {
+      await expectFailure(Promise.resolve().then(() => controller.updateQueue({
+        sessionId: agent.id, itemId: item.id, action,
+      })), 'gateway/bad-request')
+    }
+    expect(inbox.nextStep).toEqual([nextStep])
+    expect(inbox.nextTurn).toEqual([context])
+    await ctx.fiber.dispose()
+  })
+
   it.each(['continuable', 'seeded-continuable'] as const)(
     'mutates both inbox destinations of a live %s child while its parent is offline',
     async (childMode) => {

@@ -8,7 +8,9 @@ import { fileAddressFor } from '@deepseek-ai/dsh-util-workspace-path'
 import { failureLine, orderEntries } from '../src/client/FilesBody.tsx'
 import type { DirLevel } from '../src/client/store.ts'
 import { zh } from '../src/client/locales.ts'
-import { mountBody, ROOT, SESSION, TAB } from './mount.client.tsx'
+import { FADE_MS, mountBody, ROOT, SESSION, TAB } from './mount.client.tsx'
+import { toolCall, toolResult } from './scripted-events.client.ts'
+import { heatLabel } from '../src/client/FilesBody.tsx'
 
 const ROOT_LEVEL: DirLevel = {
   entries: [
@@ -325,5 +327,89 @@ describe('failureLine', () => {
   it('carries an unclassified failure\'s own message', () => {
     const failure = { code: 'remote/transport', message: 'socket closed' } as unknown as RemoteFailure
     expect(failureLine(t, failure)).toBe('读取失败：socket closed')
+  })
+})
+
+describe('FilesBody activity heatmap', () => {
+  const FILES: DirLevel = {
+    entries: [{ name: 'a.ts', type: 'file', size: 1 }, { name: 'b.ts', type: 'file', size: 1 }, { name: 'c.ts', type: 'file', size: 1 }],
+    truncated: false,
+  }
+
+  async function mountHot(heatmap = true) {
+    const mounted = mountBody(ROOT, undefined, heatmap)
+    await act(() => mounted.script.watches.ready(ROOT))
+    await act(() => mounted.script.settle({ ok: true, value: FILES }))
+    return mounted
+  }
+
+  function touch(events: ReturnType<typeof mountBody>['events'], callId: string, name: string, args: object, meta?: object): void {
+    const time = Date.now()
+    events.append(toolCall(callId, name, args, time))
+    events.append(toolResult(callId, time, meta === undefined ? {} : { meta }))
+  }
+
+  const row = (view: ReturnType<typeof mountBody>['view'], name: string): HTMLElement =>
+    view.container.querySelector<HTMLElement>(`[data-files-path="${ROOT}/${name}"] button`)!
+
+  afterEach(() => { vi.useRealTimers() })
+
+  it('tints rows by what the agent did, whatever spelling the tool used for the path', async () => {
+    const { view, events } = await mountHot()
+    expect(row(view, 'a.ts').hasAttribute('data-files-heat')).toBe(false)
+    act(() => {
+      touch(events, '1', 'read', { file_path: 'a.ts' })
+      touch(events, '2', 'edit', { file_path: `${ROOT}/b.ts` })
+      touch(events, '3', 'write', { file_path: './src/../c.ts' }, { operation: 'create' })
+    })
+    expect(row(view, 'a.ts').getAttribute('data-files-heat')).toBe('read')
+    expect(row(view, 'b.ts').getAttribute('data-files-heat')).toBe('edit')
+    expect(row(view, 'c.ts').getAttribute('data-files-heat')).toBe('create')
+    expect(row(view, 'a.ts').style.getPropertyValue('--files-heat')).toBe('1.00')
+  })
+
+  it('fades rows out on a timer until the tint is gone, then stops ticking', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] })
+    const { view, events } = await mountHot()
+    act(() => { touch(events, '1', 'read', { file_path: 'a.ts' }) })
+    await act(() => vi.advanceTimersByTimeAsync(FADE_MS / 2))
+    expect(Number(row(view, 'a.ts').style.getPropertyValue('--files-heat'))).toBeLessThan(0.6)
+    expect(row(view, 'a.ts').hasAttribute('data-files-heat')).toBe(true)
+    await act(() => vi.advanceTimersByTimeAsync(FADE_MS))
+    expect(row(view, 'a.ts').hasAttribute('data-files-heat')).toBe(false)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('says what happened in a tooltip', async () => {
+    const { view, events } = await mountHot()
+    act(() => { touch(events, '1', 'edit', { file_path: 'a.ts' }) })
+    fireEvent.mouseEnter(row(view, 'a.ts'))
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 350)) })
+    expect(document.body.textContent).toContain(zh['age.now'])
+  })
+
+  it('draws nothing while the heatmap is off, and the header toggle turns it on and off per tree', async () => {
+    const { view, events } = await mountHot(false)
+    act(() => { touch(events, '1', 'read', { file_path: 'a.ts' }) })
+    expect(row(view, 'a.ts').hasAttribute('data-files-heat')).toBe(false)
+    const toggle = view.container.querySelector<HTMLElement>('[data-files-heatmap]')!
+    expect(toggle.getAttribute('aria-pressed')).toBe('false')
+    fireEvent.click(toggle)
+    expect(toggle.getAttribute('aria-pressed')).toBe('true')
+    expect(row(view, 'a.ts').getAttribute('data-files-heat')).toBe('read')
+    fireEvent.click(toggle)
+    expect(row(view, 'a.ts').hasAttribute('data-files-heat')).toBe(false)
+  })
+
+  it('words each kind with its count and age', () => {
+    const t = makeTranslate(zh)
+    const now = 1_000_000
+    const at = (ageMs: number) => ({ kind: 'edit', reads: 0, edits: 2, at: now - ageMs }) as const
+    expect(heatLabel(t, at(30_000), now)).toBe('编辑 2 次 · 30 秒前')
+    expect(heatLabel(t, at(125_000), now)).toBe('编辑 2 次 · 2 分钟前')
+    expect(heatLabel(t, at(1000), now)).toBe('编辑 2 次 · 刚刚')
+    expect(heatLabel(t, { kind: 'read', reads: 3, edits: 0, at: now }, now)).toBe('读取 3 次 · 刚刚')
+    expect(heatLabel(t, { kind: 'create', reads: 0, edits: 0, at: now }, now)).toBe('已创建 · 刚刚')
+    expect(heatLabel(t, at(-5000), now)).toBe('编辑 2 次 · 刚刚')
   })
 })

@@ -113,19 +113,21 @@ export function McpPanel(props: McpPanelProps): ReactNode {
     )
   }
   return (
-    <div className={css.root} data-mcp-panel>
-      {view.kind === 'list'
-        ? (
-          <div className={css.header}>
-            <div>
-              <h1 className={css.heading}>{t('title')}</h1>
-              <p className={css.subtitle}>{t('subtitle')}</p>
+    <div className={css.scroller}>
+      <div className={css.root} data-mcp-panel>
+        {view.kind === 'list'
+          ? (
+            <div className={css.header}>
+              <div>
+                <h1 className={css.heading}>{t('title')}</h1>
+                <p className={css.subtitle}>{t('subtitle')}</p>
+              </div>
+              <Button variant="primary" size="sm" icon={<IconPlusOutlineRegular size={13} />} onClick={openCreate}>{t('add')}</Button>
             </div>
-            <Button variant="primary" size="sm" icon={<IconPlusOutlineRegular size={13} />} onClick={openCreate}>{t('add')}</Button>
-          </div>
-        )
-        : null}
-      {body}
+          )
+          : null}
+        {body}
+      </div>
     </div>
   )
 }

@@ -1614,6 +1614,26 @@ describe('built-in conversation node Definitions', () => {
     expect(tail.branchUnavailable).toBe(true)
   })
 
+  it('publishes a report for a long Turn and none for a short one', () => {
+    const turn = (offset: number, endSeq: number) => [
+      at(offset + 1, 'turn/start', { turn: offset + 1 }),
+      at(offset + 2, 'step/start', { turn: offset + 1, step: 1 }),
+      at(offset + 3, 'tool/call', { turn: offset + 1, step: 1, callId: `t${offset}`, name: 'bash', arguments: '{"command":"pnpm test"}' }),
+      at(offset + 4, 'tool/result', {
+        turn: offset + 1, step: 1, message: toolResult(`t${offset}`, '      Tests  3 passed (3)'),
+      }, { surfaceOp: 'append' }),
+      at(offset + 5, 'step/end', { turn: offset + 1, step: 1 }),
+      at(endSeq, 'turn/end', { turn: offset + 1, reason: { kind: 'completed' } }),
+    ]
+    const value = assembler(turn(0, 90_000))
+    expect((node(snapshot(value), 'turn-tail')?.data as TurnTailChatData).report).toEqual({
+      durationMs: 89_999, toolCalls: 1, files: 0, added: 0, removed: 0,
+      tests: { passed: 3, failed: 0, skipped: 0 }, slowest: { name: 'bash', durationMs: 1 },
+    })
+    const short = assembler(turn(0, 10))
+    expect((node(snapshot(short), 'turn-tail')?.data as TurnTailChatData).report).toBeUndefined()
+  })
+
   it('publishes exact Turn usage only after pagination supplies the full lifecycle window', () => {
     const value = assembler([
       at(3, 'assistant/message', {

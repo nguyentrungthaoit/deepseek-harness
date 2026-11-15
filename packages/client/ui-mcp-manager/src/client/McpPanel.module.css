@@ -1,3 +1,13 @@
+/* The main column does not scroll on its own; this full-size wrapper does,
+ * so a server with many tools stays reachable and the scrollbar sits at the
+ * column edge rather than beside the centered page. */
+.scroller {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
 .root {
   display: flex;
   flex-direction: column;

@@ -25,6 +25,9 @@ import type {
 } from '@deepseek-ai/dsh-client-ui-chat/client'
 import type { QuotaNoticeInjected } from '@deepseek-ai/dsh-client-ui-chat/client'
 import type { PerformanceUsageRowInjected } from '../src/client/settings/PerformanceUsageRow.tsx'
+import type { StallWarningRowInjected } from '../src/client/settings/StallWarningRows.tsx'
+import type { LiveActivityRowInjected } from '../src/client/settings/LiveActivityRow.tsx'
+import type { TurnReportRowInjected } from '../src/client/settings/TurnReportRow.tsx'
 import { CHAT_SETTINGS_NAMESPACE, type ChatSettings } from '../src/chat-settings.ts'
 import { ActivityPill, UsagePill } from '../src/client/chat/StatsPills.tsx'
 
@@ -130,7 +133,7 @@ describe('Chat apply wiring', () => {
     expect(b.runtime.slots.entries('conversation.composer.dock').map(row => row.options.id))
       .toEqual(['activity', 'usage'])
     expect(b.runtime.slots.entries('settings.general.item').map(row => row.options.id))
-      .toEqual(['transcript-view', 'link-opening', 'composer-enter', 'performance-usage'])
+      .toEqual(['transcript-view', 'link-opening', 'composer-enter', 'performance-usage', 'model-stall-warning', 'tool-stall-warning', 'live-activity', 'turn-report'])
     await b.runtime.dispose()
   })
 
@@ -191,6 +194,40 @@ describe('Chat apply wiring', () => {
       const injected = (entry.inject as () => Pick<PerformanceUsageRowInjected, 'hooks'>)()
       expect(injected.hooks.performanceUsage).toBe(face.hooks.performanceUsage)
     }
+    await b.runtime.dispose()
+  })
+
+  it('shares one stall-threshold source between both Settings rows and persists each choice', async () => {
+    const b = await bench()
+    const faces = ['model-stall-warning', 'tool-stall-warning'].map((id) => {
+      const row = b.runtime.slots.entries('settings.general.item').find(entry => entry.options.id === id)!
+      return (row.inject as () => Partial<StallWarningRowInjected>)()
+    })
+    const [model, tool] = faces
+    expect(tool?.hooks?.stallWarning).toBe(model?.hooks?.stallWarning)
+    expect(model?.hooks?.stallWarning.getSnapshot()).toEqual({ model: 120, tool: 300 })
+    model?.setModelStallWarning?.(600)
+    tool?.setToolStallWarning?.(0)
+    expect(b.chatSettings.set).toHaveBeenCalledWith('modelStallWarning', 600)
+    expect(b.chatSettings.set).toHaveBeenCalledWith('toolStallWarning', 0)
+    expect(model?.hooks?.stallWarning.getSnapshot()).toEqual({ model: 600, tool: 0 })
+    await b.runtime.dispose()
+  })
+
+  it('publishes the live-details switch from its Settings row and persists the choice', async () => {
+    const b = await bench()
+    const row = b.runtime.slots.entries('settings.general.item').find(entry => entry.options.id === 'live-activity')!
+    const face = (row.inject as () => Partial<LiveActivityRowInjected>)()
+    expect(face.hooks?.liveActivity.getSnapshot()).toBe(true)
+    face.setLiveActivity?.(false)
+    expect(b.chatSettings.set).toHaveBeenCalledWith('liveActivity', false)
+    expect(face.hooks?.liveActivity.getSnapshot()).toBe(false)
+    const reportRow = b.runtime.slots.entries('settings.general.item').find(entry => entry.options.id === 'turn-report')!
+    const reportFace = (reportRow.inject as () => Partial<TurnReportRowInjected>)()
+    expect(reportFace.hooks?.turnReport.getSnapshot()).toBe(120)
+    reportFace.setTurnReport?.(300)
+    expect(b.chatSettings.set).toHaveBeenCalledWith('turnReport', 300)
+    expect(reportFace.hooks?.turnReport.getSnapshot()).toBe(300)
     await b.runtime.dispose()
   })
 

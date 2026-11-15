@@ -64,7 +64,7 @@ Fork 复制 `atSeq` 所选的精确事件前缀，包含切点事件，允许在
 
 Client 的首次 `follow`、重连首屏与 `loadOlder()` 至少请求 50 条以 append 方式追加的 `user/message` 和 `assistant/message` 事件，并向前跨过至少两个 `turn/start`，其中包含已加载窗口开头尚未补齐的轮次。Host 在首次同时满足两个下限的轮次开头停止；若先达到 500 条计数消息或历史已耗尽，则立即返回。Steering 不增加轮次分界。区间内的其他事件随页返回，但不计入消息预算。分页和 follow 请求可选的 `turnWindow` 在 `maxMessages` 上限内指定这两个下限。`loadThrough()` 复用相同规则，仅将每页消息数下限设为 200；500 条上限不限制整次跳转。不带 `turnWindow` 的请求保留按消息对齐的分页方式。
 
-队列编辑仅允许用非空文本替换待处理内容。
+队列编辑仅允许用非空文本替换待处理内容。Move 将一条用户撰写的 next-turn 条目与相邻条目交换；越过任一端时不做改动。Run 在 Agent 空闲时启动一条已停驻的用户撰写 next-turn 条目，在轮次或维护任务进行中以 `session/agent-busy` 拒绝。Agent 没有不带消息的唤醒方式，因此 Run 在一个维护任务中重新发送该条目，其被锁存的唤醒在任务结算时重放，并事先把条目移到队首；其余条目随后按顺序运行。Move 与 Run 把条目的移除记录为一次 canceled 拼接，随后重新插入；对 goal 轮次、问题回复等自动条目以 `gateway/bad-request` 拒绝。
 
 附件授权读取内置 Session 事件声明的内容字段与已完成的 assistant 流块，包括扁平的 V4 tool 角色消息。未知事件载荷与无关字段不能授权附件读取。
 

@@ -192,6 +192,38 @@
   flex: 1;
 }
 
+/* Title plus the optional state caption share the row's 32px height. */
+.titleStack {
+  flex: 1;
+  min-width: 0;
+  margin: 0 6px 0 4px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.sessionRow .titleStack .title {
+  margin: 0;
+  flex: none;
+}
+
+.sessionRow .titleStack .titleWithSecondary {
+  line-height: 18px;
+}
+
+.secondary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  line-height: 12px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.secondaryWarning {
+  color: var(--dsw-alias-state-warn-label);
+}
+
 /* While the marquee travels, both clipping edges fade in over 12px instead of
    hard-cutting a character: the left once the title has moved off its start
    (data-scrolled), the right while text still remains beyond the cell

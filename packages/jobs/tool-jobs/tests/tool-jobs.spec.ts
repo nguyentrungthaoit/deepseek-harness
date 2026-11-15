@@ -56,6 +56,7 @@ async function fakeAgent(ctx: Context, sessionId: string, delivery: FakeDelivery
     followup: delivery.followup ?? (() => {}),
     status: delivery.status ?? 'running',
     session: { id, header: { version: 0, id, createdAt: 0 } },
+    inbox: { nextStep: [], nextTurn: [] },
   } as unknown as Agent
   agentRegistryDisposers.set(agent, await ctx.agents.register(agent))
   agentScopeFibers.set(agent, scopeFiber)
@@ -698,6 +699,7 @@ describe('completion notices across scoped mounts', () => {
       ctx: agentScope.ctx,
       inject,
       session: { id: SessionId('sess-scoped'), header: { version: 0, id: SessionId('sess-scoped'), createdAt: 0 } },
+      inbox: { nextStep: [], nextTurn: [] },
     } as unknown as Agent
     const dispose = await ctx.agents.register(owner)
 
@@ -1003,6 +1005,32 @@ describe('completion notices', () => {
     p.settle({ status: 'killed' })
     await tick()
     expect(inject).not.toHaveBeenCalled()
+  })
+
+  it('ends a wait on a user steer and still notifies the later settlement', async () => {
+    const { ctx } = await setup()
+    const inject = vi.fn()
+    const owner = await fakeAgent(ctx, 'sess-1', { inject })
+    const p = producer({ owner: owner.id })
+    const id = ctx.jobs.start(p.spec)
+    p.append('partial\n')
+
+    const pending = call(ctx, 'job_output', { job_id: id, wait: true, timeout_ms: 60_000 }, owner)
+    await tick()
+    // A plugin notice does not end the wait; a user-authored message does.
+    const notice = createUserMessage({ content: [{ type: 'text', text: 'notice' }], source: { kind: 'tool-jobs', form: 'notice', summary: 'notice' } })
+    ;(owner.inbox.nextStep as unknown[]).push(notice)
+    emitAgentEvent(ctx, owner, 'agent/inbox/inserted', { message: notice })
+    await tick()
+    const steer = createUserMessage({ content: [{ type: 'text', text: 'stop waiting' }], source: { kind: 'user' } })
+    ;(owner.inbox.nextStep as unknown[]).push(steer)
+    emitAgentEvent(ctx, owner, 'agent/inbox/inserted', { message: steer })
+    expect(text(await pending)).toBe('partial\n[status: running, user steered]')
+    expect(inject).not.toHaveBeenCalled()
+
+    p.settle({ status: 'completed' })
+    await tick()
+    expect(inject).toHaveBeenCalledTimes(1)
   })
 
   it('suppresses the notice when a wait returned the terminal state', async () => {

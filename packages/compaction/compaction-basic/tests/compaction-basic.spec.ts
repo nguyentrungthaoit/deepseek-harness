@@ -1,4 +1,4 @@
-import { describe, expect, expectTypeOf, it, vi } from 'vitest'
+import { describe, expect, expectTypeOf, it, onTestFinished, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { AttachmentId } from '@deepseek-ai/dsh-attachment'
 import BasicCompactionEngine from '@deepseek-ai/dsh-compaction-basic'
@@ -19,6 +19,7 @@ import type {
   ContentBlock,
   GenerateOptions,
   LlmFailure,
+  LlmCallConfig,
   LlmResolvedModelInfo,
   Message,
   StreamChunk,
@@ -827,7 +828,7 @@ describe('pressure measurement and retention', () => {
     const result = await compactIfNeeded(compact, session, 'pressure', 'fallback')
     expect(result).not.toBeNull()
     expect(session.requestHeader()?.config.model).toBe('actual')
-    expect(measure.mock.calls[0]).toEqual([session])
+    expect(measure.mock.calls[0]).toEqual([session, session.requestHeader()])
   })
 
   it('declines when envelope pressure is high but the surface has no compactable range', async () => {
@@ -1669,6 +1670,152 @@ describe('default one-shot summarizer', () => {
     }])
     await expect(compact.runSummarize(promptInput('history'), agent(conversation(1), MODEL)))
       .rejects.toMatchObject({ code: 'UNSUPPORTED_CONTENT' })
+  })
+})
+
+describe('model-switch pressure', () => {
+  function request(ctx: Context, session: Session, config: LlmCallConfig, signal = SIGNAL) {
+    return agentEvents(ctx, agent(session, MODEL)).waterfall(
+      'agent/request', { turn: 5, step: 1, signal }, () => Promise.resolve(config),
+    )
+  }
+
+  function harness(
+    config: BasicCompactionConfig = {},
+    finish?: Extract<StreamChunk, { type: 'finish' }>['reason'],
+  ) {
+    const ctx = new Context()
+    void new LlmRuntime(ctx)
+    new SessionProjectionRegistry(ctx)
+    void new TokenMeter(ctx)
+    onTestFinished(() => ctx.fiber.dispose())
+    const adapter = new ScriptedAdapter([{ type: 'text', text: 'checkpoint' }], finish)
+    ctx.llm.registerAdapter(['small'], new ContextAdapter(1_000))
+    ctx.llm.registerAdapter([MODEL], adapter)
+    const compact = new BasicCompactionEngine(ctx, {
+      headroomTokens: 0, maxTokens: 32, thresholdRatio: 0.5, retainTokens: 100, ...config,
+    })
+    return { ctx, adapter, compact }
+  }
+
+  it('checks the newly routed window and summarizes with the previous model before returning it', async () => {
+    const { ctx, adapter } = harness()
+    const session = conversation(4, 'fixture '.repeat(80))
+    const previous = session.requestHeader()
+    const selected = { provider: 'small', model: 'small' }
+    const before = ctx.tokenMeter.measure(session).totalTokens
+    expect(before).toBeGreaterThan(1_000)
+    ctx.on('agent/request', async (_payload, next) => ({ ...await next(), ...selected }))
+
+    await expect(request(ctx, session, { provider: MODEL, model: MODEL })).resolves.toEqual(selected)
+
+    expect(adapter.lastOptions).toMatchObject({ provider: MODEL, model: MODEL, purpose: 'compaction' })
+    expect(ctx.tokenMeter.measure(session, { config: selected }).totalTokens).toBeLessThan(500)
+    expect(session.requestHeader()).toEqual(previous)
+    expect(session.snapshotEvents().filter(event => event.type === 'compaction/summary'))
+      .toHaveLength(1)
+  })
+
+  it('uses the proposed output reservation and the destination retention policy', async () => {
+    const { ctx, adapter } = harness({
+      modelPolicies: [{ provider: 'small', model: 'small', retainTokens: 0 }],
+    })
+    const session = conversation(2)
+    expect(ctx.tokenMeter.measure(session).totalTokens).toBeLessThan(500)
+    await request(ctx, session, { provider: 'small', model: 'small', maxTokens: 700 })
+    expect(adapter.lastOptions).toBeDefined()
+    expect(ctx.tokenMeter.measure(session).totalTokens).toBeLessThan(300)
+  })
+
+  it('retains an explicit summary target when switching models', async () => {
+    const { ctx, adapter } = harness({ summarizationProvider: 'summary', summarizationModel: 'summary' })
+    ctx.llm.registerAdapter(['summary'], adapter)
+    const session = conversation(4)
+    await request(ctx, session, { provider: 'small', model: 'small' })
+    expect(adapter.lastOptions).toMatchObject({ provider: 'summary', model: 'summary' })
+  })
+
+  it('skips initial, unchanged, below-threshold, disabled and already cancelled requests', async () => {
+    const { ctx, adapter } = harness()
+    const selected = { provider: 'small', model: 'small' }
+    await request(ctx, Session.create(SessionId('initial-switch')), selected)
+    await request(ctx, conversation(4), { provider: MODEL, model: MODEL })
+    await request(ctx, conversation(1), selected)
+    await request(ctx, conversation(4), selected, AbortSignal.abort('cancelled'))
+    expect(adapter.lastOptions).toBeUndefined()
+    const disabled = harness({ auto: false })
+    await request(disabled.ctx, conversation(4), selected)
+    expect(disabled.adapter.lastOptions).toBeUndefined()
+  })
+
+  it('rejects a failed summary without committing the destination model', async () => {
+    const { ctx } = harness({}, {
+      kind: 'error', failure: { code: 'AUTH', message: 'summary credentials expired' },
+    })
+    const session = conversation(4)
+    const previous = session.requestHeader()
+    const nodes = [...session.surface.nodes]
+    const switching = request(ctx, session, { provider: 'small', model: 'small' })
+    await expect(switching).rejects.toMatchObject({ code: 'MODEL_SWITCH_COMPACTION_FAILED' })
+    await expect(switching).rejects.toThrow('summary credentials expired')
+    expect(session.requestHeader()).toEqual(previous)
+    expect(session.surface.nodes).toEqual(nodes)
+    expect(session.snapshotEvents().at(-1)).toMatchObject({
+      type: 'compaction/end', data: { error: 'summary credentials expired' },
+    })
+  })
+
+  it('rejects an oversized indivisible tail instead of accepting the switch', async () => {
+    const { ctx } = harness()
+    const session = conversation(1, 'large '.repeat(800))
+    await expect(request(ctx, session, { provider: 'small', model: 'small' }))
+      .rejects.toMatchObject({ code: 'MODEL_SWITCH_COMPACTION_FAILED' })
+    expect(session.requestHeader()?.config.provider).toBe(MODEL)
+  })
+
+  it('rejects pressure with no compactable span before making a summary call', async () => {
+    const { ctx, adapter } = harness()
+    const session = Session.create(SessionId('indivisible-switch'))
+    session.append('request/header', { header: { config: { provider: MODEL, model: MODEL } }, reason: 'initial' })
+    session.append('user/message', createUserMessage({
+      content: [{ type: 'text', text: 'large '.repeat(800) }], source: { kind: 'user' },
+    }), { surfaceOp: 'append' })
+    const switching = request(ctx, session, { provider: 'small', model: 'small' })
+    await expect(switching).rejects.toMatchObject({ code: 'MODEL_SWITCH_COMPACTION_FAILED' })
+    await expect(switching).rejects.toThrow('no safe compaction range')
+    expect(adapter.lastOptions).toBeUndefined()
+  })
+
+  it('reports a non-Error capacity failure without changing the route', async () => {
+    const { ctx } = harness()
+    vi.spyOn(ctx.llm, 'resolveModelInfo').mockRejectedValueOnce('capacity lookup unavailable')
+    const session = conversation(4)
+    const switching = request(ctx, session, { provider: 'small', model: 'small' })
+    await expect(switching).rejects.toMatchObject({ code: 'MODEL_SWITCH_COMPACTION_FAILED' })
+    await expect(switching).rejects.toThrow('capacity lookup unavailable')
+    expect(session.requestHeader()?.config.provider).toBe(MODEL)
+  })
+
+  it('preserves cancellation while resolving the destination capacity', async () => {
+    const { ctx, adapter } = harness()
+    const controller = new AbortController()
+    const cancelled = new Error('cancel destination check')
+    vi.spyOn(ctx.llm, 'resolveModelInfo').mockImplementationOnce(async () => {
+      controller.abort(cancelled)
+      throw cancelled
+    })
+    await expect(request(ctx, conversation(4), { provider: 'small', model: 'small' }, controller.signal))
+      .rejects.toBe(cancelled)
+    expect(adapter.lastOptions).toBeUndefined()
+  })
+
+  it('removes the switch check when the contributing plugin is unloaded', async () => {
+    const ctx = createContext()
+    onTestFinished(() => ctx.fiber.dispose())
+    const fiber = await ctx.plugin(BasicCompactionEngine, { headroomTokens: 0, maxTokens: 32 })
+    await fiber.dispose()
+    const selected = { provider: 'missing', model: 'missing' }
+    await expect(request(ctx, conversation(4), selected)).resolves.toEqual(selected)
   })
 })
 

@@ -81,6 +81,10 @@ Misconfiguration fails fast: unknown settings, duplicate per-model overrides, in
 
 The oldest balanced span is replaced by one summary message and the recent tail stays verbatim; the conversation continues from the summary. The operation reports how many history items were condensed and the estimated tokens freed. If nothing can be condensed safely — for example the whole conversation is one indivisible unit — nothing changes and nothing is written to the session log. If no model is available to write the summary (no configured target and no routed request yet), condensation fails with a clear error telling you to configure the summarization provider and model or route one request.
 
+### Switching models
+
+Before a changed provider/model request is committed, automatic compaction measures the existing history against the destination model's capacity, output reservation, and pressure policy. When condensation is needed, it uses the previous routed model and its summary settings; an explicitly configured summary target still takes precedence. The destination request proceeds only after history falls below its threshold. Failure reports `MODEL_SWITCH_COMPACTION_FAILED` and leaves the previous request header intact; select a larger model or retry after correcting the reported cause. Completed pruning or condensation remains in the session even when a later attempt fails. The check runs when the next request is prepared, and `auto: false` disables it.
+
 ### On-demand condensation with /compact
 
 With `dsh-command-compact` mounted, type `/compact` in a chat UI to condense immediately, even below the pressure threshold. The command reports how many history items were condensed and the estimated tokens saved. While the agent is mid-turn or condensation is already running, `/compact` reports that condensation is unavailable; prompts you send while it runs are accepted and start after it finishes.
@@ -126,7 +130,7 @@ The transaction validates the surface span and the durable lock, appends `compac
 
 ### Config resolution
 
-`resolveConfig` validates and detaches defaults, `resolveTargetPolicy` merges exact provider/model overrides, and `resolveCompactSpec` requires explicit adapter capacity and routed output reservation to resolve the trigger and retained budget. The effective envelope’s `maxTokens` supplies that reservation, falling back to the adapter default and then zero. Model discovery (`listModels()`) is never consulted for policy; only the durable route's capacity matters.
+`resolveConfig` validates and detaches defaults, `resolveTargetPolicy` merges exact provider/model overrides, and `resolveCompactSpec` requires explicit adapter capacity and routed output reservation to resolve the trigger and retained budget. The effective envelope’s `maxTokens` supplies that reservation, falling back to the adapter default and then zero. Model discovery (`listModels()`) is never consulted for policy; capacity comes from the durable route or the proposed destination during a model switch.
 
 ### Source map
 

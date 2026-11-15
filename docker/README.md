@@ -66,7 +66,7 @@ File: [`docker-compose.yml`](../docker-compose.yml), mẫu env: [`compose.env.ex
 ## Dùng tại công ty (chỉ Docker)
 
 ```sh
-docker pull nguyentrungthaoit/dsh:0.2.1-alpha.7
+docker pull nguyentrungthaoit/dsh:0.2.1-alpha.9
 ```
 
 ### Web UI
@@ -77,13 +77,13 @@ docker run --rm -p 3080:3080 \
   -v dsh-home:/data/dsh \
   -v /path/to/project:/workspace \
   -w /workspace \
-  nguyentrungthaoit/dsh:0.2.1-alpha.7
+  nguyentrungthaoit/dsh:0.2.1-alpha.9
 ```
 
 Mở `http://127.0.0.1:3080`. Nếu truy cập qua hostname công ty:
 
 ```sh
-... nguyentrungthaoit/dsh:0.2.1-alpha.7 web --no-open --port 3080 --trusted-host app.company.local:3080
+... nguyentrungthaoit/dsh:0.2.1-alpha.9 web --no-open --port 3080 --trusted-host app.company.local:3080
 ```
 
 ### Headless (một task)
@@ -93,7 +93,7 @@ docker run --rm \
   -e DEEPSEEK_API_KEY=sk-... \
   -v /path/to/project:/workspace \
   -w /workspace \
-  nguyentrungthaoit/dsh:0.2.1-alpha.7 \
+  nguyentrungthaoit/dsh:0.2.1-alpha.9 \
   --profile headless "summarize this repository"
 ```
 
@@ -130,12 +130,12 @@ Làm một lần ngoài máy công ty (hoặc CI), rồi đồng nghiệp chỉ 
 ```sh
 docker build \
   --build-arg DSH_CLIENT_COMMIT_HASH="$(git rev-parse HEAD)" \
-  -t nguyentrungthaoit/dsh:0.2.1-alpha.7 \
+  -t nguyentrungthaoit/dsh:0.2.1-alpha.9 \
   -t nguyentrungthaoit/dsh:latest \
   .
 
 docker login
-docker push nguyentrungthaoit/dsh:0.2.1-alpha.7
+docker push nguyentrungthaoit/dsh:0.2.1-alpha.9
 docker push nguyentrungthaoit/dsh:latest
 ```
 
@@ -150,11 +150,11 @@ docker push nguyentrungthaoit/dsh-squid:6.14
 
 ## Shell trong image
 
-Container có `bash`, `git`, `curl`, `jq`, `rg` (ripgrep), `make`, `sqlite3`, `zip`/`unzip`, `xz`, `file`, `less`, `ps` và `tini` (PID 1, chuyển SIGTERM và thu process con). `python3` và `pip` trên `PATH` là venv `/opt/dsh-py`, đã cài `python-docx` 1.2.0, `openpyxl` 3.1.5, `pypdf` 6.19.0, `pandas` 2.3.3 và `matplotlib` 3.10.7. Agent gọi `python3` khi cần đọc `.docx`, `.xlsx` hoặc chữ trong PDF.
+Container có `bash`, `git`, `curl`, `jq`, `rg` (ripgrep), `make`, `sqlite3`, `zip`/`unzip`, `xz`, `file`, `less`, `ps` và `tini` (PID 1, chuyển SIGTERM và thu process con). `python3` và `pip` trên `PATH` là venv `/opt/dsh-py`, đã cài `python-docx` 1.2.0, `openpyxl` 3.1.5, `pypdf` 6.19.0, `pandas` 2.3.3, `matplotlib` 3.10.7, `python-pptx` 1.0.2 và `XlsxWriter` 3.2.9. Agent gọi `python3` khi cần đọc `.docx`, `.xlsx` hoặc chữ trong PDF.
 
 Mạng công ty không cho tải package lúc chạy, nên mọi tool agent cần đều nằm sẵn trong image. Image cài font Noto (đủ dấu tiếng Việt), DejaVu, Liberation (thay Arial/Times/Courier cùng kích thước chữ) và Carlito/Caladea (thay Calibri/Cambria). Xem trước file Office trong Web và biểu đồ `matplotlib` dùng các font này.
 
-Image có `HEALTHCHECK`: `docker ps` hiện `healthy` khi Web trả lời ở cổng 3080 trong container. Web không gắn skill Office của Desktop, nên model không được nhắc dùng các thư viện này. `pip install` vào `/opt/dsh-py` mất khi tạo lại container; venv tạo dưới `/workspace` nằm trên mount của máy host.
+Image có `HEALTHCHECK`: `docker ps` hiện `healthy` khi Web trả lời ở cổng 3080 trong container. Image đặt `DSH_PRIMARY_RUNTIME=/opt/dsh-runtime` (`runtime.json` ghi phiên bản venv), nên các preset Web gắn skill `office-docx`, `office-xlsx`, `office-pptx` và tool `load_workspace_dependencies`: model tạo, sửa và kiểm tra file Word, Excel, PowerPoint bằng venv này, rồi xuất PDF bằng LibreOffice Kit. Đặt `DSH_PRIMARY_RUNTIME=` (rỗng) để tắt. `pip install` vào `/opt/dsh-py` mất khi tạo lại container; venv tạo dưới `/workspace` nằm trên mount của máy host.
 
 ## Custom skill
 

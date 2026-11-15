@@ -29,6 +29,7 @@
     "client": {
       "inject": [
         "@deepseek-ai/dsh-api-workspace-files",
+        "@deepseek-ai/dsh-api-session-controller",
         "@deepseek-ai/dsh-client-ui-sidebar-right",
         "@deepseek-ai/dsh-client-ui-session",
         "@deepseek-ai/dsh-api-remotes",
@@ -48,8 +49,10 @@
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:~",
     "@deepseek-ai/dsh-api-remotes": "workspace:*",
+    "@deepseek-ai/dsh-api-session-controller": "workspace:*",
     "@deepseek-ai/dsh-api-workspace-files": "workspace:*",
     "@deepseek-ai/dsh-client-locale": "workspace:*",
+    "@deepseek-ai/dsh-client-shortcuts": "workspace:*",
     "@deepseek-ai/dsh-client-store": "workspace:*",
     "@deepseek-ai/dsh-client-test-runtime": "workspace:*",
     "@deepseek-ai/dsh-client-ui-dockkit": "workspace:*",
@@ -61,13 +64,13 @@
     "@deepseek-ai/dsh-session": "workspace:*",
     "@deepseek-ai/dsh-typert-protocol": "workspace:*",
     "@deepseek-ai/dsh-util-workspace-path": "workspace:*",
+    "@deepseek-ai/schemastery": "workspace:~",
     "@testing-library/react": "^16.1.0",
     "@types/react": "~18.3.1",
     "@types/react-dom": "~18.3.0",
-    "react": "^18.2.0",
     "clsx": "^2.0.0",
-    "react-dom": "^18.2.0",
-    "@deepseek-ai/dsh-client-shortcuts": "workspace:*"
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
   },
   "files": [
     "lib/index.js",

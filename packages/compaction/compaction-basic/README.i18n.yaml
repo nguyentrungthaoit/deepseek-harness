@@ -29,6 +29,9 @@
 /deepseek-ai-dsh-compaction-basic/use-this-package/what-happens-when-condensation-runs:
   en: c872a8ef069596f0
   zh: b3a48e309ae830d4
+/deepseek-ai-dsh-compaction-basic/use-this-package/switching-models:
+  en: 220462fa3d9af674
+  zh: b3fcc9832d5f42cb
 /deepseek-ai-dsh-compaction-basic/use-this-package/on-demand-condensation-with-compact:
   en: 4c5067e4c57ca708
   zh: 1c0e70319b9b2112
@@ -51,8 +54,8 @@
   en: f4330f6bff22d400
   zh: 46e16c51bb66a0f7
 /deepseek-ai-dsh-compaction-basic/understand-the-implementation/config-resolution:
-  en: 246736aa86d3013d
-  zh: 35e261927ba0699c
+  en: 313e019b1a9f8aa8
+  zh: 3c75d11b02adb693
 /deepseek-ai-dsh-compaction-basic/understand-the-implementation/source-map:
   en: 3f1d7a55b790e623
   zh: 39e878c0785a885c

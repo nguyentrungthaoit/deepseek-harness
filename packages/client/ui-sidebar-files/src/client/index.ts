@@ -12,19 +12,27 @@
  */
 import type { ShortcutCommandId } from '@deepseek-ai/dsh-client-shortcuts/client'
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
+import type { SessionBinding } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import { FILES_ID, filesDefinition } from './definition.tsx'
+import { Config } from './config.ts'
+import { FileActivityTracker } from './file-activity.ts'
+import type { FileActivitySnapshot } from './file-activity.ts'
 import { createList, createWatch, filesFace } from './face.ts'
 import { FilesBody } from './FilesBody.tsx'
 import { FilesTitle } from './FilesTitle.tsx'
 import { en, zh } from './locales.ts'
 import { createFilesStore } from './store.ts'
 
+export { Config } from './config.ts'
 export type { SidebarFilesKey } from './locales.ts'
 export type { DirLevel, FilesState, FilesTabState, LevelState } from './store.ts'
+export type { FileActivitySnapshot, FileHeat } from './file-activity.ts'
 export type { FilesInjected, ListWorkspaceDirectory, WorkspaceFilesListRemote } from './face.ts'
 export type { FilesBodyProps } from './FilesBody.tsx'
 
@@ -49,13 +57,14 @@ const NS = 'sidebarFiles'
  * Required browser services: the tab registry, the keyed seat, the Remote
  * carrier and its namespace, and copy.
  */
-export const inject = ['slots', 'locale', 'sidebarRightTabs', 'sidebarRight', 'remote', 'remote.workspaceFiles']
+export const inject = ['slots', 'locale', 'sidebarRightTabs', 'sidebarRight', 'remote', 'remote.workspaceFiles', 'sessions']
 
 /**
  * Client plugin body: register the type, its dictionaries, its body, and its chip title.
  * @param ctx - client root context carrying the registry, the slots, and the Remote face.
+ * @param config - heatmap defaults; schemastery materializes every field before this runs.
  */
-export function apply(ctx: ClientContext): void {
+export function apply(ctx: ClientContext, config: Config = Config({})): void {
   const t = ctx.locale.bind(NS)
   ctx.inject(['shortcuts'], (ctx) => {
     ctx.effect(() => ctx.shortcuts.register({
@@ -82,7 +91,23 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-sidebar-files: dictionaries')
 
   const store = createFilesStore()
-  const inject = filesFace(createList(ctx.remote), createWatch(ctx.remote))
+  const fadeMs = (config.heatFadeSeconds as number) * 1000
+  const trackers = new WeakMap<SessionBinding, FileActivityTracker>()
+  const quiet: FileActivitySnapshot = { files: new Map() }
+  const idle: ObservableSnapshot<FileActivitySnapshot> = { getSnapshot: () => quiet, subscribe: () => () => {} }
+  const activity = (sessionId: SessionId): ObservableSnapshot<FileActivitySnapshot> => {
+    const binding = ctx.sessions.binding(sessionId)
+    if (binding === undefined) return idle
+    let tracker = trackers.get(binding)
+    if (tracker === undefined) {
+      tracker = new FileActivityTracker(binding.eventSource, fadeMs)
+      trackers.set(binding, tracker)
+    }
+    return tracker
+  }
+  const inject = filesFace(createList(ctx.remote), createWatch(ctx.remote), {
+    enabled: config.heatmap as boolean, fadeMs, activity,
+  })
   ctx.effect(() => ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register(
     {
       name: 'sidebar.right.pane.tab', key: FILES_ID, locale: NS, store, inject,

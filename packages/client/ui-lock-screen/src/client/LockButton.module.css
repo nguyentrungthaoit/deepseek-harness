@@ -1,0 +1,39 @@
+/* Matches the Settings trigger row at the sidebar foot. */
+.button {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 42px;
+  margin: 0;
+  padding: 0 10px 0 8px;
+  box-sizing: border-box;
+  border: none;
+  border-radius: var(--dsw-radius-md);
+  background: transparent;
+  cursor: pointer;
+  overflow: hidden;
+  color: var(--dsw-alias-label-primary);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 22px;
+}
+
+.button:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.rail {
+  flex: none;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  gap: 0;
+  padding: 0;
+}
+
+.label {
+  overflow: hidden;
+  white-space: nowrap;
+}

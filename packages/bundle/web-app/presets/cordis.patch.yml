@@ -151,6 +151,8 @@
             name: '@deepseek-ai/dsh-tool-todo'
             config:
               allowParallelInProgress: true
+          - id: tool-session-query
+            name: '@deepseek-ai/dsh-tool-session-query'
           - id: tool-web
             name: '@deepseek-ai/dsh-tool-web'
             config:
@@ -165,6 +167,14 @@
                 - !!js process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:path').dirname(process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('@deepseek-ai/dsh-agent-preset/package.json')), 'skills')
           - id: tool-skill
             name: '@deepseek-ai/dsh-tool-skill'
+          - id: workspace-dependencies
+            name: '@deepseek-ai/dsh-tool-workspace-dependencies'
+            disabled: !!js "!process.env.DSH_PRIMARY_RUNTIME"
+            config:
+              source: !!js "process.getBuiltinModule('node:path').resolve(process.env.DSH_PRIMARY_RUNTIME ?? '')"
+          - id: skill-office
+            name: '@deepseek-ai/dsh-skill-office'
+            disabled: !!js "!process.env.DSH_PRIMARY_RUNTIME"
           - id: present
             name: '@deepseek-ai/dsh-tool-present'
           - id: tool-plugin-manager

@@ -335,8 +335,8 @@ describe('QueueDock', () => {
 
     fireEvent.click(header)
     expect(header.getAttribute('aria-expanded')).toBe('true')
-    // Expanded renders one Edit/Remove/Steer group per row, plus the header.
-    expect(view.getAllByRole('button')).toHaveLength(1 + 2 * 3)
+    // Expanded renders one Up/Down/Edit/Remove/Steer group per row, plus the header.
+    expect(view.getAllByRole('button')).toHaveLength(1 + 2 * 5)
     expect(view.getByText('one')).toBeTruthy()
     expect(view.getByText('two')).toBeTruthy()
 
@@ -484,7 +484,7 @@ describe('QueueDock', () => {
     fireEvent.click(getByRole('button', { name: '2 条排队消息' }))
     expect([...container.querySelectorAll('li')].map(item => item.textContent))
       .toEqual(['第一条排队消息', 'image'])
-    expect(container.querySelectorAll('button')).toHaveLength(7)
+    expect(container.querySelectorAll('button')).toHaveLength(11)
     expect(container.querySelectorAll('[aria-label="编辑排队消息"]')).toHaveLength(2)
     expect(container.querySelectorAll('[aria-label="删除排队消息"]')).toHaveLength(2)
     expect(container.querySelectorAll('[aria-label="插话发送"]')).toHaveLength(2)
@@ -660,8 +660,101 @@ describe('QueueDock', () => {
     })
 
     act(() => { source.push({ ...running, running: false }) })
+    expect(rendered.queryByLabelText('插话发送')).toBeNull()
+    expect(rendered.getByLabelText('立即发送')).toHaveProperty('disabled', false)
+
+    const automatic = { ...row('i-goal', 'goal round'), source: { kind: 'goal' } as never }
+    act(() => { source.push({ ...snapshotWith([automatic]), running: false }) })
     expect(rendered.getByLabelText('插话发送')).toHaveProperty('disabled', true)
     expect(rendered.getByLabelText('插话发送').getAttribute('title')).toBe('仅运行中可插话发送')
+    expect(rendered.queryByLabelText('立即发送')).toBeNull()
+  })
+
+  it('moves user-written rows one position and disables moves past either end', async () => {
+    const automatic = { ...row('i-goal', 'goal round'), source: { kind: 'goal' } as never }
+    const snap = snapshotWith([row('i-1', 'one'), row('i-2', 'two'), automatic])
+    const source = liveSession(snap)
+    const updateQueue = vi.fn(() => Promise.resolve())
+    const view = render(
+      <QueueDock {...kitFor(snap, { updateQueue })} useSession={source.useSession} useProjection={source.useProjection} />,
+    )
+    fireEvent.click(view.getByRole('button', { name: '3 条排队消息' }))
+    const ups = view.getAllByLabelText('上移排队消息')
+    const downs = view.getAllByLabelText('下移排队消息')
+    expect(ups).toHaveLength(2)
+    expect(ups.map(button => (button as HTMLButtonElement).disabled)).toEqual([true, false])
+    expect(downs.map(button => (button as HTMLButtonElement).disabled)).toEqual([false, false])
+    fireEvent.click(downs[0]!)
+    await waitFor(() => {
+      expect(updateQueue).toHaveBeenCalledWith(iid('i-1'), { kind: 'move', direction: 'down' })
+    })
+    fireEvent.click(ups[1]!)
+    await waitFor(() => {
+      expect(updateQueue).toHaveBeenCalledWith(iid('i-2'), { kind: 'move', direction: 'up' })
+    })
+
+    act(() => { source.push(snapshotWith([row('i-1', 'one')])) })
+    expect(view.queryByLabelText('上移排队消息')).toBeNull()
+    expect(view.queryByLabelText('下移排队消息')).toBeNull()
+  })
+
+  it('reports a failed move', async () => {
+    const snap = snapshotWith([row('i-1', 'one'), row('i-2', 'two')])
+    const source = liveSession(snap)
+    const notify = vi.fn()
+    const updateQueue = vi.fn(() => Promise.reject(new Error('gone')))
+    const view = render(
+      <QueueDock {...kitFor(snap, { updateQueue, notify })} useSession={source.useSession} useProjection={source.useProjection} />,
+    )
+    fireEvent.click(view.getByRole('button', { name: '2 条排队消息' }))
+    fireEvent.click(view.getAllByLabelText('上移排队消息')[1]!)
+    await waitFor(() => {
+      expect(notify).toHaveBeenCalledWith('error', '移动失败：这条消息可能已经开始发送。')
+    })
+  })
+
+  it('shows a paused bar while idle with rows left and resumes the first user-written row', async () => {
+    const automatic = { ...row('i-goal', 'goal round'), source: { kind: 'goal' } as never }
+    const idle = { ...snapshotWith([automatic, row('i-1', 'one'), row('i-2', 'two')]), running: false }
+    const source = liveSession(idle)
+    const notify = vi.fn()
+    const run = Promise.withResolvers<undefined>()
+    const updateQueue = vi.fn(() => run.promise)
+    const view = render(
+      <QueueDock {...kitFor(idle, { updateQueue, notify })} useSession={source.useSession} useProjection={source.useProjection} />,
+    )
+    const status = view.getByRole('status')
+    expect(status.textContent).toBe('队列已暂停')
+    expect(status.getAttribute('title')).toBe('上一轮出错、被停止或被拦截时，排队消息不会自动发送。点击继续发送下一条。')
+    const resume = view.getByRole('button', { name: '继续' }) as HTMLButtonElement
+    fireEvent.click(resume)
+    expect(updateQueue).toHaveBeenCalledWith(iid('i-1'), { kind: 'run' })
+    expect(resume.disabled).toBe(true)
+    await act(async () => { run.reject(new Error('busy')); await run.promise.catch(() => undefined) })
+    expect(notify).toHaveBeenCalledWith('error', '无法立即发送，请稍后重试。')
+    expect(resume.disabled).toBe(false)
+
+    fireEvent.click(view.getByRole('button', { name: '3 条排队消息' }))
+    fireEvent.click(view.getAllByLabelText('立即发送')[1]!)
+    expect(updateQueue).toHaveBeenLastCalledWith(iid('i-2'), { kind: 'run' })
+
+    act(() => { source.push({ ...snapshotWith([automatic]), running: false }) })
+    expect(view.getByRole('status').textContent).toBe('队列已暂停')
+    expect(view.queryByRole('button', { name: '继续' })).toBeNull()
+
+    act(() => { source.push(snapshotWith([row('i-1', 'one')])) })
+    expect(view.queryByText('队列已暂停')).toBeNull()
+
+    act(() => {
+      source.push({
+        ...snapshotWith([row('i-1', 'one')]),
+        running: false,
+        pendingSubmissions: [{
+          requestId: 'req-new' as never, placement: 'transcript', time: 1, text: 'new', attachments: [],
+        }],
+      })
+    })
+    expect(view.queryByText('队列已暂停')).toBeNull()
   })
 
   it('renders ordinary queue actions for a continuable child', () => {

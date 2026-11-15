@@ -2,7 +2,9 @@
 import type {} from '@deepseek-ai/dsh-settings'
 
 import type { Volatile, Context } from '@deepseek-ai/cordis'
-import type { ChatSettings, LinkOpening, PerformanceUsageMode } from './chat-settings.ts'
+import type {
+  ChatSettings, LinkOpening, ModelStallWarning, PerformanceUsageMode, ToolStallWarning, TurnReportThreshold,
+} from './chat-settings.ts'
 import z from '@deepseek-ai/schemastery'
 import { TRANSCRIPT_VIEW_FIELD } from './chat-settings.ts'
 
@@ -22,6 +24,14 @@ export interface Config {
   performanceUsage: Volatile<PerformanceUsageMode>
   /** Default destination for Chat HTTP(S) links. */
   linkOpening: Volatile<LinkOpening>
+  /** Model-silence warning threshold for the running status, in seconds. */
+  modelStallWarning: Volatile<ModelStallWarning>
+  /** Tool-runtime warning threshold for the running status, in seconds. */
+  toolStallWarning: Volatile<ToolStallWarning>
+  /** Whether the running status shows live tool, token, and reasoning details. */
+  liveActivity: Volatile<boolean>
+  /** Minimum Turn runtime, in seconds, for the end-of-Turn report card; 0 turns it off. */
+  turnReport: Volatile<TurnReportThreshold>
 }
 
 /** Live preferences projected to the browser. */
@@ -29,6 +39,10 @@ export const Config = z.object({
   [TRANSCRIPT_VIEW_FIELD]: ChatSettingsFields[TRANSCRIPT_VIEW_FIELD].volatile(),
   performanceUsage: ChatSettingsFields['performanceUsage'].volatile(),
   linkOpening: ChatSettingsFields.linkOpening.volatile(),
+  modelStallWarning: ChatSettingsFields.modelStallWarning.volatile(),
+  toolStallWarning: ChatSettingsFields.toolStallWarning.volatile(),
+  liveActivity: ChatSettingsFields.liveActivity.volatile(),
+  turnReport: ChatSettingsFields.turnReport.volatile(),
 })
 
 /** Host preferences are consumed through the configuration form projection.

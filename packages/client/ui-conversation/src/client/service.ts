@@ -52,7 +52,7 @@ export interface IConversation {
    */
   send(text: string): Promise<void>
   /**
-   * Apply one edit, remove, or Steer operation to a pending queue occurrence.
+   * Apply one edit, remove, Steer, move, or run operation to a pending queue occurrence.
    * @param itemId - agent-owned inbox occurrence identity.
    * @param action - requested queue operation.
    * @returns completion; converged QueueDock races resolve, while other failures reject.

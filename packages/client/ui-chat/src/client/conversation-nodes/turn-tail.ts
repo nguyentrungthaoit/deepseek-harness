@@ -9,6 +9,7 @@ import type {
   AssistantChatData, FinalAssistantChatData, TurnTailChatData,
 } from '../contract/chat-nodes.ts'
 import { CHAT_SYNTHETIC_SEQ_OFFSETS, chatNode } from './common.ts'
+import { turnReport } from './turn-report.ts'
 
 declare module '../contract/chat-nodes.ts' {
   interface ChatNodeDataMap {
@@ -87,9 +88,11 @@ function tailData(context: ConversationNodeContext<TurnTailState>): TurnTailChat
       latestTranscriptSeq = candidate
     }
   }
-  const tokenUsage = context.start?.event.type === 'turn/start'
-    ? deriveTurnTokenUsage(context.matches.map(match => match.event).filter(isSessionEvent))
-    : undefined
+  const started = context.start?.event.type === 'turn/start' ? context.start : undefined
+  const tokenUsage = started === undefined
+    ? undefined
+    : deriveTurnTokenUsage(context.matches.map(match => match.event).filter(isSessionEvent))
+  const report = started === undefined ? undefined : turnReport(started, end, context.matches)
   return {
     turn: end.event.data.turn,
     seq: end.event.seq,
@@ -97,6 +100,7 @@ function tailData(context: ConversationNodeContext<TurnTailState>): TurnTailChat
     closing,
     branchUnavailable: closing === null || latestTranscriptSeq !== closing.finalNode.seq,
     ...tokenUsage === undefined ? {} : { tokenUsage },
+    ...report === undefined ? {} : { report },
   }
 }
 

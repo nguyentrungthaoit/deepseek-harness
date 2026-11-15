@@ -3554,7 +3554,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-tool-bash-persistent`
 
 - `inject`: `tools` · `terminals`
-- `source`: [`packages/shell/tool-bash-persistent/src/index.ts:444`](../packages/shell/tool-bash-persistent/src/index.ts)
+- `source`: [`packages/shell/tool-bash-persistent/src/index.ts:446`](../packages/shell/tool-bash-persistent/src/index.ts)
 
 ```ts config-catalog
 /** Configuration for the persistent Bash tool. */
@@ -4392,8 +4392,8 @@ export interface Config {
 
 ## `@deepseek-ai/dsh-workspace-changes`
 
-- `inject`: `subprocess`
-- `source`: [`packages/deliverables/workspace-changes/src/index.ts:33`](../packages/deliverables/workspace-changes/src/index.ts)
+- `inject`: `subprocess` · `sessions`
+- `source`: [`packages/deliverables/workspace-changes/src/index.ts:35`](../packages/deliverables/workspace-changes/src/index.ts)
 
 ```ts config-catalog
 /** Snapshot, capture, and comparison bounds. Invalid values fail plugin load. */
@@ -4411,6 +4411,8 @@ export interface Config {
   maxFileBytes: number
   /** Milliseconds a line comparison may run before it degrades to whole-file replacement. */
   diffTimeoutMs: number
+  /** Largest commit count one `repository` read may return; a larger request is clamped to it. */
+  maxCommits: number
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-workspace-changes -->
@@ -4432,6 +4434,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 | `@deepseek-ai/dsh-client-locale` | — | [`packages/client/locale/src/index.ts`](../packages/client/locale/src/index.ts) |
 | `@deepseek-ai/dsh-client-modules` | `loader` | [`packages/client/modules/src/index.ts`](../packages/client/modules/src/index.ts) |
 | `@deepseek-ai/dsh-client-resources` | — | [`packages/client/resources/src/index.ts`](../packages/client/resources/src/index.ts) |
+| `@deepseek-ai/dsh-client-ui-activity` | `connection` · `workspaceChanges` | [`packages/client/ui-activity/src/index.ts`](../packages/client/ui-activity/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-agent-preset` | — | [`packages/client/ui-agent-preset/src/index.ts`](../packages/client/ui-agent-preset/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-approval` | — | [`packages/client/ui-approval/src/index.ts`](../packages/client/ui-approval/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-attachment` | — | [`packages/client/ui-attachment/src/index.ts`](../packages/client/ui-attachment/src/index.ts) |
@@ -4447,6 +4450,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 | `@deepseek-ai/dsh-client-ui-input-trigger` | — | [`packages/client/ui-input-trigger/src/index.ts`](../packages/client/ui-input-trigger/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-jobs` | — | [`packages/client/ui-jobs/src/index.ts`](../packages/client/ui-jobs/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-layout` | — | [`packages/client/ui-layout/src/index.ts`](../packages/client/ui-layout/src/index.ts) |
+| `@deepseek-ai/dsh-client-ui-lock-screen` | — | [`packages/client/ui-lock-screen/src/index.ts`](../packages/client/ui-lock-screen/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-mcp-manager` | — | [`packages/client/ui-mcp-manager/src/index.ts`](../packages/client/ui-mcp-manager/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-message-feedback` | — | [`packages/client/ui-message-feedback/src/index.ts`](../packages/client/ui-message-feedback/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-model-selection` | — | [`packages/client/ui-model-selection/src/index.ts`](../packages/client/ui-model-selection/src/index.ts) |

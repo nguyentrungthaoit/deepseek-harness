@@ -154,6 +154,19 @@
   font-variant-numeric: tabular-nums;
 }
 
+.runningActivity {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dsw-alias-label-tertiary);
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.running[data-stalled] .runningActivity {
+  color: var(--dsw-alias-state-warn-primary);
+}
+
 .runningIcon {
   position: relative;
   display: inline-flex;

@@ -176,7 +176,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'none',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'conversation.chat.assistant-actions\', () => ctx.slots.register(\n      { name: \'conversation.chat.assistant-actions\', id: \'my-entry\', order: 100, label: \'My entry\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/client/ui-chat/src/client/contract/slots.ts:321',
+    source: 'packages/client/ui-chat/src/client/contract/slots.ts:340',
   },
   {
     key: 'conversation.chat.commandview',
@@ -224,7 +224,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     occupants: [],
     replaceRisk: 'none',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'conversation.chat.commandview\', () => ctx.slots.register(\n      { name: \'conversation.chat.commandview\', key: \'<one key the owner dispatches>\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/client/ui-chat/src/client/contract/slots.ts:309',
+    source: 'packages/client/ui-chat/src/client/contract/slots.ts:328',
   },
   {
     key: 'conversation.chat.node',
@@ -295,7 +295,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'shadows-shipped-ui',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'conversation.chat.node\', () => ctx.slots.register(\n      { name: \'conversation.chat.node\', key: \'<one key the owner dispatches>\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/client/ui-chat/src/client/contract/slots.ts:290',
+    source: 'packages/client/ui-chat/src/client/contract/slots.ts:309',
   },
   {
     key: 'conversation.chat.turnTail',
@@ -357,7 +357,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'none',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'conversation.chat.turnTail\', () => ctx.slots.register(\n      { name: \'conversation.chat.turnTail\', id: \'my-entry\', order: 100, label: \'My entry\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/client/ui-chat/src/client/contract/slots.ts:315',
+    source: 'packages/client/ui-chat/src/client/contract/slots.ts:334',
   },
   {
     key: 'conversation.composer',
@@ -1172,7 +1172,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'shadows-shipped-ui',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'conversation.message.images\', () => ctx.slots.register(\n      { name: \'conversation.message.images\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/client/ui-chat/src/client/contract/slots.ts:303',
+    source: 'packages/client/ui-chat/src/client/contract/slots.ts:322',
   },
   {
     key: 'conversation.plan-review.actions',
@@ -2409,13 +2409,19 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
       'client-locale LanguageRow id \'language\'',
       'client-ui-chat LinkOpeningRow id \'link-opening\'',
       'client-ui-chat PerformanceUsageRow id \'performance-usage\'',
+      'client-ui-chat ModelStallWarningRow id \'model-stall-warning\'',
+      'client-ui-chat ToolStallWarningRow id \'tool-stall-warning\'',
+      'client-ui-chat LiveActivityRow id \'live-activity\'',
+      'client-ui-chat TurnReportRow id \'turn-report\'',
       'client-ui-chat TranscriptViewRow id \'transcript-view\'',
       'client-ui-conversation EnterBehaviorRow id \'composer-enter\'',
+      'client-ui-lock-screen LockSettingsRow id \'lock-screen\'',
       'client-ui-permission-presets PermissionRow id \'permission\'',
       'client-ui-settings-general DeveloperToolsRow id \'developer-tools\'',
       'client-ui-settings-general CurrentVersionRow id \'current-version\'',
       'client-ui-settings-session-log UploadRow',
       'client-ui-shortcuts ShortcutsRow id \'shortcuts\'',
+      'client-ui-sidebar NotificationsRow id \'desktop-notifications\'',
       'client-ui-theme AppearanceRow id \'appearance\'',
       'client-ui-theme FontSizeRow id \'font-size\'',
     ],
@@ -2887,6 +2893,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     declaredBy: 'an entry in \'root\' (client-ui-layout), so it exists while that entry is mounted',
     occupants: [
       'client-ui-chat QuotaNoticeHost id \'chat.quota-notice\'',
+      'client-ui-lock-screen LockOverlay id \'lock-screen\'',
       'client-ui-plugin-manager PluginRefreshToast id \'plugin-manager.refresh-toast\'',
       'client-ui-schedule ScheduleDeleteToast id \'schedule.delete-toast\'',
       'client-ui-settings-account DesktopOnboardingEntry id \'desktop-onboarding\'',
@@ -2940,7 +2947,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'none',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'shell.quota-notice\', () => ctx.slots.register(\n      { name: \'shell.quota-notice\', select: owner => null },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/client/ui-chat/src/client/contract/slots.ts:329',
+    source: 'packages/client/ui-chat/src/client/contract/slots.ts:348',
   },
   {
     key: 'sidebar',
@@ -3116,6 +3123,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     slotInject: '',
     declaredBy: 'an entry in \'sidebar\' (client-ui-sidebar), so it exists while that entry is mounted',
     occupants: [
+      'client-ui-lock-screen LockButton id \'lock-screen\'',
       'client-ui-cordis CordisPanel id \'cordis-panel\'',
     ],
     replaceRisk: 'none',
@@ -3212,6 +3220,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     slotInject: 'SidebarRightTabInjected',
     declaredBy: 'an entry in \'rightbar.session\' (client-ui-sidebar-right), so it exists while that entry is mounted',
     occupants: [
+      'client-ui-activity ActivityPanel',
       'client-ui-deliverables ReviewTab',
       'client-ui-plan PlanPreview',
       'client-ui-schedule ScheduleTaskTab',
@@ -3266,6 +3275,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     slotInject: 'SidebarRightTabInjected',
     declaredBy: 'an entry in \'rightbar.session\' (client-ui-sidebar-right), so it exists while that entry is mounted',
     occupants: [
+      'client-ui-activity ActivityTitle',
       'client-ui-plan PlanTitle',
       'client-ui-schedule ScheduleTaskTabTitle',
       'client-ui-sidebar-browser BrowserTitle',
@@ -3596,7 +3606,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'none',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'sidebar.right.tab.files.actions\', () => ctx.slots.register(\n      { name: \'sidebar.right.tab.files.actions\', id: \'my-entry\', order: 100, label: \'My entry\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/client/ui-sidebar-files/src/client/index.ts:34',
+    source: 'packages/client/ui-sidebar-files/src/client/index.ts:42',
   },
   {
     key: 'sidebar.right.tab.guide',

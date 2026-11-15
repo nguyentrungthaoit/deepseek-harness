@@ -3,6 +3,7 @@
  * write-only secret field whose blank value keeps the stored one; a new entry
  * takes a key and a value. Values are never prefilled.
  */
+import { clsx } from 'clsx'
 import { useId, type ReactNode } from 'react'
 import { IconPlusOutlineRegular, IconTrashOutlineRegular, Input, SettingsSecretField } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
@@ -51,7 +52,7 @@ export function KeyValueEditor(props: {
               )
               : (
                 <>
-                  <Input className={css.mono ?? ''} aria-label={t('form.key')} placeholder={t('form.key')} value={row.key} onChange={(event) => { update(index, { key: event.target.value }) }} />
+                  <Input className={clsx(css.mono)} aria-label={t('form.key')} placeholder={t('form.key')} value={row.key} onChange={(event) => { update(index, { key: event.target.value }) }} />
                   <Input aria-label={t('form.value')} placeholder={t('form.value')} type="password" autoComplete="new-password" value={row.value} onChange={(event) => { update(index, { value: event.target.value }) }} />
                 </>
               )}

@@ -91,14 +91,14 @@ describe('workspace browser rows', () => {
     const view = render(<SessionNodeItem node={idle} currentId={undefined} now={0} onOpen={vi.fn()} t={t} />)
     // The cell is the row's first element and holds nothing while the row is
     // idle without an occupant; the title follows it.
-    const cell = screen.getByText('Flat Session').previousElementSibling
+    const cell = screen.getByText('Flat Session').parentElement?.previousElementSibling
     expect(cell?.className).toMatch(/slot/)
     expect(cell?.children).toHaveLength(0)
 
     view.rerender(<SessionNodeItem node={{ ...idle, running: true }} currentId={undefined} now={0}
       onOpen={vi.fn()} t={t} />)
     // A row that gains a state dot keeps that dot in the same cell.
-    expect(screen.getByText('Flat Session').previousElementSibling?.querySelector('[data-state="ongoing"]')).toBeTruthy()
+    expect(screen.getByText('Flat Session').parentElement?.previousElementSibling?.querySelector('[data-state="ongoing"]')).toBeTruthy()
   })
 
   it('renders a selected content-search row and opens only its session', () => {
@@ -744,7 +744,7 @@ describe('workspace browser rows', () => {
       // Card body: full title + relative time + running status.
       expect(screen.getAllByText('Hovered')).toHaveLength(2)
       expect(screen.getByText('1分钟前')).toBeTruthy()
-      expect(screen.getAllByText('进行中')).toHaveLength(2)
+      expect(screen.getAllByText('进行中')).toHaveLength(3)
       fireEvent.pointerLeave(wrapper)
       // Menu open (disabled=true) suppresses the card for the same hover.
       fireEvent.click(screen.getByRole('button', { name: '会话“Hovered”的操作' }))
@@ -773,8 +773,8 @@ describe('workspace browser rows', () => {
       expect(row.querySelector('[data-state="warning"]')).toBeTruthy()
       expect(row.querySelector('[data-state="ongoing"]')).toBeNull()
       expect(row.textContent).toContain(label)
-      expect(title.nextElementSibling?.textContent).toBe(compactLabel)
-      expect(title.nextElementSibling?.getAttribute('aria-hidden')).toBe('true')
+      expect(title.parentElement?.nextElementSibling?.textContent).toBe(compactLabel)
+      expect(title.parentElement?.nextElementSibling?.getAttribute('aria-hidden')).toBe('true')
       expect(row.textContent).not.toContain('刚刚')
 
       view.rerender(<SessionNodeItem node={{ ...node, running: false }} currentId={undefined} now={0}
@@ -802,9 +802,46 @@ describe('workspace browser rows', () => {
     }
     render(<SessionNodeItem node={node} currentId={undefined} now={0} onOpen={vi.fn()} t={tEn} />)
     const row = screen.getByRole('treeitem')
-    expect(screen.getByText('Needs input').nextElementSibling?.textContent).toBe(compactLabel)
-    expect(screen.getByText('Needs input').nextElementSibling?.getAttribute('aria-hidden')).toBe('true')
+    expect(screen.getByText('Needs input').parentElement?.nextElementSibling?.textContent).toBe(compactLabel)
+    expect(screen.getByText('Needs input').parentElement?.nextElementSibling?.getAttribute('aria-hidden')).toBe('true')
     expect(row.textContent).not.toContain('now')
+  })
+
+  it.each([
+    [{ pendingInteraction: 'approval' }, 'Waiting on you · approval', true],
+    [{ pendingInteraction: 'question' }, 'Waiting on you · question', true],
+    [{ pendingInteraction: 'plan-review' }, 'Waiting on you · plan review', true],
+    [{ pendingInteraction: 'approval', running: true, runningSubagentCount: 2 }, 'Waiting on you · approval', true],
+    [{ running: true }, 'Running', false],
+    [{ running: true, runningSubagentCount: 1 }, 'Running · 1 subagent', false],
+    [{ running: true, runningSubagentCount: 3 }, 'Running · 3 subagents', false],
+    [{ runningSubagentCount: 2 }, 'Running · 2 subagents', false],
+    [{ completed: true }, 'Done · unread', false],
+  ] as const satisfies readonly (readonly [Partial<SessionNode>, string, boolean])[])(
+    'captions the specific state %j as "%s"', (state, caption, warning) => {
+      const node: SessionNode = {
+        id: sid('s1'), title: 'Stateful', blank: false, running: false,
+        runningSubagentCount: 0, completed: false, updatedAt: 0, pinned: false, archived: false, ...state,
+      }
+      render(<SessionNodeItem node={node} currentId={undefined} now={0} onOpen={vi.fn()} t={tEn} />)
+      const secondary = screen.getByText(caption, { selector: 'span[class*="secondary"]' })
+      expect(secondary.className.includes('secondaryWarning')).toBe(warning)
+    })
+
+  it('adds no caption to idle, blank, or archived rows', () => {
+    const base: SessionNode = {
+      id: sid('s1'), title: 'Quiet', blank: false, running: false,
+      runningSubagentCount: 0, completed: false, updatedAt: 0, pinned: false, archived: false,
+    }
+    const states: readonly Partial<SessionNode>[] = [
+      {}, { blank: true, running: true }, { archived: true, completed: true },
+    ]
+    for (const state of states) {
+      const view = render(<SessionNodeItem node={{ ...base, ...state }} currentId={undefined} now={0}
+        onOpen={vi.fn()} t={tEn} />)
+      expect(view.container.querySelector('[class*="secondary"]')).toBeNull()
+      view.unmount()
+    }
   })
 
   it('idle hover card shows the Idle status line', () => {

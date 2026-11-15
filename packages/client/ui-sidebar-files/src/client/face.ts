@@ -22,6 +22,8 @@ import type { ClientRemote, RemoteResult } from '@deepseek-ai/dsh-api-remotes/cl
 import type { BoundActions } from '@deepseek-ai/dsh-client-store'
 import type { TabId } from '@deepseek-ai/dsh-client-ui-dockkit'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
+import type { FileActivitySnapshot } from './file-activity.ts'
 import type { DirLevel, createFilesStore } from './store.ts'
 import type { WorkspaceFileWatchFrame } from '@deepseek-ai/dsh-api-workspace-files/types'
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
@@ -112,8 +114,22 @@ export function childPath(parent: string, name: string): string {
   return `${parent.replace(/[/\\]+$/, '')}/${name}`
 }
 
+/** What the file tree needs to tint rows by agent activity. */
+export interface HeatmapOptions {
+  /** Whether a new tree starts with the heatmap on. */
+  readonly enabled: boolean
+  /** How long a touched file stays tinted, in milliseconds. */
+  readonly fadeMs: number
+  /** The session's file activity; one stable source per session. @param sessionId - the viewed session. */
+  readonly activity: (sessionId: SessionId) => ObservableSnapshot<FileActivitySnapshot>
+}
+
 /** The tree's injected business face, as the body receives it. */
 export interface FilesInjected {
+  /** Bare reactive facts, bound by the renderer as selector hooks. */
+  readonly hooks: { readonly fileActivity: ObservableSnapshot<FileActivitySnapshot> }
+  /** How long a touched file stays tinted, in milliseconds. */
+  readonly heatFadeMs: number
   /** Refresh the open directory tree. @param tabId - owning tab. */
   readonly refresh: (tabId: TabId) => void
   /** Control automatic rereads without closing watches. @param tabId - owning tab. @param enabled - automatic-refresh setting. */
@@ -147,11 +163,13 @@ export interface FilesInjected {
  * Bind the tree's face to one directory listing.
  * @param list - the bound `workspaceFiles.list` call.
  * @param watch - target-scoped directory observation.
+ * @param heat - the heatmap's default state, fade, and activity source.
  * @returns the Slot `inject` factory: session and bound actions in, face out.
  */
 export function filesFace(
   list: ListWorkspaceDirectory,
   watch: WatchWorkspaceDirectory,
+  heat: HeatmapOptions,
 ): (sessionId: SessionId, actions: BoundActions<ReturnType<typeof createFilesStore>>) => FilesInjected {
   return (
     sessionId: SessionId,
@@ -181,6 +199,8 @@ export function filesFace(
       })
     }
     return {
+      hooks: { fileActivity: heat.activity(sessionId) },
+      heatFadeMs: heat.fadeMs,
       refresh: (tabId) => { void roots.get(tabId)?.refreshTree() },
       setAutoRefresh: (tabId, enabled) => {
         actions.autoRefresh(tabId, enabled)
@@ -188,6 +208,7 @@ export function filesFace(
       },
       start(tabId, root, signal) {
         actions.start(tabId, root)
+        if (!heat.enabled) actions.heatmap(tabId, false)
         signal.addEventListener('abort', () => {
           void roots.get(tabId)?.close()
           roots.delete(tabId)

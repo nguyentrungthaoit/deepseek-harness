@@ -1,0 +1,22 @@
+# Bilingual-pair consistency record for 2026-10-28-ship-session-search-in-web-presets.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-10-28-ship-session-search-in-web-presets.md
+/agent-note-ship-session-search-in-the-web-presets:
+  en: 106de556821b4f36
+  zh: adb22566abb27678
+/agent-note-ship-session-search-in-the-web-presets/problem:
+  en: ac1341446515fceb
+  zh: 8730dc2b39e8dcd1
+/agent-note-ship-session-search-in-the-web-presets/decision:
+  en: 11b0aef4a545b6fa
+  zh: 32fb062f916660a5
+/agent-note-ship-session-search-in-the-web-presets/alternatives-considered:
+  en: b24c93e85d29ceae
+  zh: 66fc4d8a229cb158
+/agent-note-ship-session-search-in-the-web-presets/consequences:
+  en: e96a688235350984
+  zh: 9c79fb308bf07abc
+/agent-note-ship-session-search-in-the-web-presets/testing:
+  en: 1cb6f7d7767d6e93
+  zh: 8458d73c05b10e39

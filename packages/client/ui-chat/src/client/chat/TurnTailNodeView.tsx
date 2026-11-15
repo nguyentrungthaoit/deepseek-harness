@@ -1,7 +1,10 @@
 import { memo } from 'react'
 import type { InjectFace, PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
-import type { ChatNodeViewProps, PerformanceUsageInjected, TurnTailOwnerProps } from '../contract/slots.ts'
+import type {
+  ChatNodeViewProps, PerformanceUsageInjected, TurnReportInjected, TurnTailOwnerProps,
+} from '../contract/slots.ts'
 import { MessageIconActions } from './MessageIconActions.tsx'
+import { TurnReportCard } from './TurnReportCard.tsx'
 import { TurnUsagePanel } from './TurnUsagePanel.tsx'
 import { assistantText } from './turn-assistant.ts'
 import { hasAssistantReplyContent } from '../contract/assistant-content.ts'
@@ -11,7 +14,7 @@ import css from './TurnTailNodeView.module.css'
 
 type TurnTailNodeViewProps = ChatNodeViewProps<'turn-tail'>
   & PropsRenderSlots<'conversation.chat.turnTail' | 'conversation.chat.assistant-actions'>
-  & InjectFace<PerformanceUsageInjected>
+  & InjectFace<PerformanceUsageInjected & TurnReportInjected>
 
 function lastContent(snapshot: ChatSnapshot, turn: number, skipWarning: boolean): ChatNode | undefined {
   const keys = snapshot.locations.getTurn(turn)
@@ -24,12 +27,20 @@ function lastContent(snapshot: ChatSnapshot, turn: number, skipWarning: boolean)
   return undefined
 }
 
-/** Turn-local actions and feature tail over the Location index, independent of Assistant placement. */
+/**
+ * Turn-local actions and feature tail over the Location index, independent of Assistant placement.
+ * A Turn that ran at least the accepted report threshold also shows its report card.
+ */
 export const TurnTailNodeView = memo(function TurnTailNodeView({
-  node, openFile, forkAt, renderSlot, t, useChat, usePerformanceUsage,
+  node, openFile, forkAt, renderSlot, t, useChat, usePerformanceUsage, useTurnReport,
 }: TurnTailNodeViewProps) {
   const detailed = usePerformanceUsage(mode => mode) === 'detailed'
   const data = node.data
+  const report = data.report
+  const reportThreshold = useTurnReport(seconds => seconds)
+  const card = report !== undefined && reportThreshold > 0 && report.durationMs >= reportThreshold * 1000
+    ? <TurnReportCard report={report} t={t} />
+    : null
   const hasLaterChatNode = useChat(snapshot =>
     (lastContent(snapshot, data.turn, true)?.anchorSeq ?? -1) > (data.closing?.finalNode.seq ?? data.seq))
   const endsWithResponse = useChat((snapshot) => {
@@ -46,7 +57,11 @@ export const TurnTailNodeView = memo(function TurnTailNodeView({
   const closing = data.closing
   const owner: TurnTailOwnerProps = { turn, seq: closing?.finalNode.seq ?? data.seq, openFile }
   const tail = renderSlot('conversation.chat.turnTail', owner)
-  if (closing === null) return tail === null ? null : <div className={css.root} data-turn-tail={data.turn}>{tail}</div>
+  if (closing === null) {
+    return tail === null && card === null
+      ? null
+      : <div className={css.root} data-turn-tail={data.turn}>{tail}{card}</div>
+  }
   // Interruption-frozen partials carry no messageId, so they address no
   // durable message and contribute no per-message actions.
   const messageId = closing.finalNode.messageId
@@ -60,6 +75,7 @@ export const TurnTailNodeView = memo(function TurnTailNodeView({
       data-actions-reveal={endsWithResponse ? 'always' : 'hover'}
     >
       {tail}
+      {card}
       <MessageIconActions
         text={assistantText(closing.blocks)}
         time={closing.time}

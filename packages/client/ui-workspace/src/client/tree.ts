@@ -7,9 +7,7 @@ import {
   type SessionListState, type SessionSearchResultItem, type SessionSummary,
 } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { WorkspaceId, WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/client'
-import type {
-  SessionStatusSnapshot,
-} from '@deepseek-ai/dsh-client-ui-session/client'
+import type { SessionStatusSnapshot } from '@deepseek-ai/dsh-client-ui-session/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
 import { workspaceTitleOf } from '@deepseek-ai/dsh-util-workspace-path'
@@ -268,22 +266,31 @@ export interface SessionRowState {
 
 /**
  * Keep the visible New Session placeholder first, then partition pinned and
- * ordinary rows without changing either partition's caller order.
+ * ordinary rows without changing either partition's caller order. Unpinned
+ * rows waiting on the user lead the ordinary rows, behind the pinned block.
  */
 function sectionMembers(
   members: readonly SessionSummary[],
   pinned: ReadonlySet<SessionId>,
   archived: ReadonlySet<SessionId>,
+  waiting: ReadonlySet<SessionId> = new Set(),
 ): SessionSummary[] {
   const placeholders: SessionSummary[] = []
   const leading: SessionSummary[] = []
+  const attention: SessionSummary[] = []
   const rest: SessionSummary[] = []
   for (const member of members) {
     if (member.blank) placeholders.push(member)
     else if (!archived.has(member.id) && pinned.has(member.id)) leading.push(member)
+    else if (!archived.has(member.id) && waiting.has(member.id)) attention.push(member)
     else rest.push(member)
   }
-  return [...placeholders, ...leading, ...rest]
+  return [...placeholders, ...leading, ...attention, ...rest]
+}
+
+/** Sessions whose unified status shows a pending approval, plan review, or question. */
+function waitingOnUser(list: SessionListState, statuses: SessionStatuses): Set<SessionId> {
+  return new Set(list.ids.filter(id => statuses.get(id)?.pendingInteraction !== undefined))
 }
 
 /**
@@ -447,6 +454,7 @@ export function deriveGroups(
   const currentGroup = current === undefined
     ? undefined
     : owningGroupKey(workspaces, current)
+  const waiting = waitingOnUser(list, statuses)
   const groups: GroupNode[] = []
   for (const g of groupByWorkspace(list, workspaces, archived, rowState.archivedFilter, view.ungroupedOrder)) {
     const expanded = expandedGroups.has(g.key)
@@ -460,7 +468,7 @@ export function deriveGroups(
       expanded,
       containsCurrent: g.key === currentGroup,
       sessions: expanded
-        ? sectionMembers(g.sessions, pinned, archived)
+        ? sectionMembers(g.sessions, pinned, archived, waiting)
           .map(session => sessionNode(session, list, statuses, pinned, archived))
         : [],
     })
@@ -526,7 +534,7 @@ export function deriveFlat(
 }
 
 /**
- * Merge immediate title/Workspace substring matches with ranked Host content
+ * Merge immediate title/Workspace/Session id substring matches with ranked Host content
  * matches. Local rows lead newest-first, content-only rows retain backend
  * order, and duplicate sessions receive the backend snippet in place.
  * @param list - session metadata authority.
@@ -576,6 +584,7 @@ export function deriveSearchResults(
     if (
       sessionTitle(summary).toLowerCase().includes(q)
       || labelOf(summary).toLowerCase().includes(q)
+      || summary.id.toLowerCase().includes(q)
     ) {
       local.push(summary)
     }

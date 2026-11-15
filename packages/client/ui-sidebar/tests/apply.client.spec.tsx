@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 /** Sidebar shell slot registration and its Session/layout callbacks. */
 import { Context, type Fiber } from '@deepseek-ai/cordis'
@@ -10,6 +11,13 @@ import type { SidebarRootInjected } from '@deepseek-ai/dsh-client-ui-sidebar/cli
 import type { MainPanelId } from '@deepseek-ai/dsh-client-ui-layout/client'
 import { HeaderLeadingControls } from '../src/client/HeaderLeadingControls.tsx'
 import { apply as hostApply } from '../src/index.ts'
+import type { NotificationsRowInjected } from '../src/client/attention/NotificationsRow.tsx'
+import type { SessionPendingInteraction, SessionStatusSnapshot } from '@deepseek-ai/dsh-client-ui-session/client'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
+
+function isNotificationsInjected(value: Record<string, unknown>): value is Record<string, unknown> & NotificationsRowInjected {
+  return 'hooks' in value && 'setNotifications' in value
+}
 
 const owners = new Set<Fiber>()
 afterEach(async () => {
@@ -38,6 +46,9 @@ async function bench(declare = true) {
   ctx.provide('layout', layout)
   ctx.provide('uiWorkspace', uiWorkspace as never)
   ctx.provide('locale', new LocaleRuntime(ctx))
+  ctx.provide('sessions', { list: createSnapshotStore({ ids: [], byId: {}, phase: 'ready', projectionsBySession: {} }) } as never)
+  const sessionStatus = createSnapshotStore<SessionStatusSnapshot>(new Map())
+  ctx.provide('uiSession', { sessionStatus } as never)
   const slots = ctx.get('slots') as SlotRegistry
   if (declare) {
     slots.register(
@@ -45,11 +56,12 @@ async function bench(declare = true) {
         'sidebar': { kind: 'single', scope: 'root' },
         'main': { kind: 'keyed', scope: 'root' },
         'shell.leading': { kind: 'single', scope: 'root' },
+        'settings.general.item': { kind: 'list', scope: 'root' },
       } },
       SidebarFrame,
     )
   }
-  return { ctx, slots, layout, uiWorkspace }
+  return { ctx, slots, layout, uiWorkspace, sessionStatus }
 }
 
 describe('ui-sidebar apply', () => {
@@ -58,7 +70,7 @@ describe('ui-sidebar apply', () => {
   })
 
   it('declares only the services it uses', () => {
-    expect(inject).toEqual(['slots', 'layout', 'uiWorkspace', 'locale', 'shortcuts'])
+    expect(inject).toEqual(['slots', 'layout', 'uiWorkspace', 'locale', 'shortcuts', 'sessions', 'uiSession'])
   })
 
   it('registers the shell and declares its child seats', async () => {
@@ -94,6 +106,26 @@ describe('ui-sidebar apply', () => {
     injected.selectPanel(panelId)
     expect(b.layout.selectPanel).toHaveBeenCalledExactlyOnceWith(panelId)
     expectTypeOf<Parameters<SidebarRootInjected['selectPanel']>[0]>().toEqualTypeOf<MainPanelId>()
+  })
+
+  it('registers the notification row and mirrors waiting sessions in the tab title', async () => {
+    const b = await bench()
+    const fiber = b.ctx.plugin({ inject: [...inject], apply })
+    await fiber.await()
+    const rows = b.slots.entries('settings.general.item')
+    expect(rows.map(row => row.options.id)).toEqual(['desktop-notifications'])
+    const injected = rows[0]!.inject!()
+    if (!isNotificationsInjected(injected)) throw new Error('the notification row did not inject its preference')
+    expect(injected.hooks.notifications.getSnapshot().support).toBe('unsupported')
+    injected.setNotifications(true)
+    const statuses = b.sessionStatus
+    document.title = 'DSH'
+    const before = document.title
+    statuses.set(new Map([['s' as SessionId, { running: false, completionUnread: false, pendingInteraction: { key: 'k', kind: 'question', sessionId: 's' as SessionId } as SessionPendingInteraction }]]))
+    expect(document.title).toBe(`(1⚠) ${before}`)
+    await fiber.dispose()
+    expect(document.title).toBe(before)
+    expect(b.slots.entries('settings.general.item')).toHaveLength(0)
   })
 
   it('waits for the sidebar declaration before registering', async () => {

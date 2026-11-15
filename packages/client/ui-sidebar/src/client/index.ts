@@ -10,10 +10,15 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 // Type-only: pulls the Session root standard-props merge.
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
+// Type-only: pulls the `settings.general.item` slot declaration.
+import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { SidebarPanelMetadata, SidebarRootInjected } from './contract/slots.ts'
 import { HeaderLeadingControls } from './HeaderLeadingControls.tsx'
 import { SidebarRoot } from './SidebarRoot.tsx'
 import { en, zh, type SidebarKey } from './locales.ts'
+import { watchAttention } from './attention/attention.ts'
+import { NotificationsRow, type NotificationsRowInjected } from './attention/NotificationsRow.tsx'
+import { NotificationPreference } from './attention/preference.ts'
 
 export type {
   SidebarBrandMarkOwnerProps, SidebarBrandNameOwnerProps, SidebarFooterActionOwnerProps,
@@ -37,7 +42,7 @@ interface WorkspaceNavigation {
 }
 
 /** Services required by the sidebar plugin. */
-export const inject = ['slots', 'layout', 'uiWorkspace', 'locale', 'shortcuts']
+export const inject = ['slots', 'layout', 'uiWorkspace', 'locale', 'shortcuts', 'sessions', 'uiSession']
 
 /** Registers the sidebar shell and its service callbacks.
  * @param ctx - Client root context.
@@ -97,4 +102,20 @@ export function apply(ctx: ClientContext): void {
     inject: injectProps,
   }, HeaderLeadingControls))
   syncPanels()
+
+  const preference = new NotificationPreference()
+  const t = ctx.locale.bind(NS)
+  ctx.effect(() => watchAttention({
+    statuses: ctx.uiSession.sessionStatus, list: ctx.sessions.list, preference, t,
+  }), 'ui-sidebar: session attention')
+  ctx.slots.inject('settings.general.item', () => ctx.slots.register({
+    name: 'settings.general.item',
+    id: 'desktop-notifications',
+    order: 40,
+    locale: NS,
+    inject: (): NotificationsRowInjected => ({
+      hooks: { notifications: preference.state },
+      setNotifications: (enabled) => { void preference.setEnabled(enabled) },
+    }),
+  }, NotificationsRow))
 }

@@ -5,8 +5,8 @@ import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import {
   IconCheckOutlineRegular, IconChevronDownOutlineRegular, IconChevronUpOutlineRegular, IconCloseOutlineRegular,
-  FileTypeIcon, fileSizeText, IconEditOutlineRegular, InlineEditor, IconQueueOutlineRegular, IconSendOutlineRegular,
-  IconTrashOutlineRegular, projectUserText, Tooltip,
+  FileTypeIcon, fileSizeText, IconEditOutlineRegular, InlineEditor, IconPauseOutlineRegular, IconPlayOutlineRegular,
+  IconQueueOutlineRegular, IconSendOutlineRegular, IconTrashOutlineRegular, projectUserText, Tooltip,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InboxState } from '@deepseek-ai/dsh-agent/types'
 import type { QueueAction } from '@deepseek-ai/dsh-api-session-controller/types'
@@ -105,6 +105,10 @@ export type QueueDockProps = PropsRuntime<'conversation.input.dock'> & QueueDock
  * Queue strip: one item renders directly; multiple items default to a
  * collapsible count header; an empty queue renders nothing. Local queued submissions
  * show sending status and disabled actions until their Host queue rows arrive.
+ * User-written rows move up or down; while the agent is idle with rows left
+ * (after an error, a stop, a blocked turn, or a reload) the strip shows a
+ * paused bar whose Resume starts the first user-written row, and each such row
+ * offers Send now in place of Steer.
  */
 export function QueueDock({ useSession, useProjection, updateQueue, notify, loadImage, t }: QueueDockProps) {
   const inbox = useProjection('inbox') as unknown as InboxState | undefined
@@ -131,6 +135,8 @@ export function QueueDock({ useSession, useProjection, updateQueue, notify, load
   const [busy, setBusy] = useState<MessageId | null>(null)
   const [collapsed, setCollapsed] = useState(true)
   const listId = useId()
+  const paused = !running && queueMutable && queue.length > 0 && pendingSubmissions.length === 0
+  const resumeTarget = paused ? queue.find(row => row.source.kind === 'user') : undefined
 
   useEffect(() => {
     if (rowCount === 0 && !collapsed) setCollapsed(true)
@@ -172,6 +178,23 @@ export function QueueDock({ useSession, useProjection, updateQueue, notify, load
   return (
     <div className={css.dock} data-queue-dock="">
       <div className={css.panel}>
+        {paused && (
+          <div className={css.pausedBar}>
+            <span className={css.lead} aria-hidden><IconPauseOutlineRegular /></span>
+            <span className={css.pausedLabel} role="status" title={t('queue.paused.hint')}>{t('queue.paused')}</span>
+            {resumeTarget !== undefined && (
+              <button
+                type="button"
+                className={css.resume}
+                disabled={busy !== null}
+                onClick={() => { void applyAction(resumeTarget.id, { kind: 'run' }, t('queue.runFailed')) }}
+              >
+                <IconPlayOutlineRegular size={14} />
+                {t('queue.resume')}
+              </button>
+            )}
+          </div>
+        )}
         {rowCount > 1 && (
           <button
             type="button"
@@ -192,9 +215,10 @@ export function QueueDock({ useSession, useProjection, updateQueue, notify, load
           </button>
         )}
         <ul id={listId} className={css.list} hidden={!listVisible}>
-          {listVisible && queue.map((row) => {
+          {listVisible && queue.map((row, index) => {
             const attachments = queueAttachments(row.content)
             const text = textOf(row.content)
+            const userRow = row.source.kind === 'user'
             return (
               <li key={row.id} className={css.row}>
                 {/* Single-item strip has no count header, so the row itself carries the queue glyph. */}
@@ -264,6 +288,36 @@ export function QueueDock({ useSession, useProjection, updateQueue, notify, load
                     )
                     : (
                       <>
+                        {userRow && queue.length > 1 && (
+                          <>
+                            <Tooltip portal label={t('queue.moveUp')} side="bottom" delayMs={500}>
+                              <button
+                                type="button"
+                                className={css.action}
+                                aria-label={t('queue.moveUp')}
+                                disabled={busy !== null || index === 0}
+                                onClick={() => {
+                                  void applyAction(row.id, { kind: 'move', direction: 'up' }, t('queue.moveFailed'))
+                                }}
+                              >
+                                <IconChevronUpOutlineRegular size={14} />
+                              </button>
+                            </Tooltip>
+                            <Tooltip portal label={t('queue.moveDown')} side="bottom" delayMs={500}>
+                              <button
+                                type="button"
+                                className={css.action}
+                                aria-label={t('queue.moveDown')}
+                                disabled={busy !== null || index === queue.length - 1}
+                                onClick={() => {
+                                  void applyAction(row.id, { kind: 'move', direction: 'down' }, t('queue.moveFailed'))
+                                }}
+                              >
+                                <IconChevronDownOutlineRegular size={14} />
+                              </button>
+                            </Tooltip>
+                          </>
+                        )}
                         <Tooltip portal label={t('queue.edit')} side="bottom" delayMs={500} disabled={text === null}>
                           <button
                             type="button"
@@ -297,24 +351,42 @@ export function QueueDock({ useSession, useProjection, updateQueue, notify, load
                             <IconTrashOutlineRegular size={14} />
                           </button>
                         </Tooltip>
-                        <Tooltip portal label={t('queue.steer')} side="bottom" delayMs={500} disabled={!running}>
-                          <button
-                            type="button"
-                            className={css.action}
-                            aria-label={t('queue.steer')}
-                            title={running ? undefined : t('queue.steer.unavailable')}
-                            disabled={busy !== null || !running}
-                            onClick={() => {
-                              void applyAction(
-                                row.id,
-                                { kind: 'steer' },
-                                t('queue.steerFailed'),
-                              )
-                            }}
-                          >
-                            <IconSendOutlineRegular />
-                          </button>
-                        </Tooltip>
+                        {!running && userRow
+                          ? (
+                            <Tooltip portal label={t('queue.run')} side="bottom" delayMs={500}>
+                              <button
+                                type="button"
+                                className={css.action}
+                                aria-label={t('queue.run')}
+                                disabled={busy !== null}
+                                onClick={() => {
+                                  void applyAction(row.id, { kind: 'run' }, t('queue.runFailed'))
+                                }}
+                              >
+                                <IconPlayOutlineRegular size={14} />
+                              </button>
+                            </Tooltip>
+                          )
+                          : (
+                            <Tooltip portal label={t('queue.steer')} side="bottom" delayMs={500} disabled={!running}>
+                              <button
+                                type="button"
+                                className={css.action}
+                                aria-label={t('queue.steer')}
+                                title={running ? undefined : t('queue.steer.unavailable')}
+                                disabled={busy !== null || !running}
+                                onClick={() => {
+                                  void applyAction(
+                                    row.id,
+                                    { kind: 'steer' },
+                                    t('queue.steerFailed'),
+                                  )
+                                }}
+                              >
+                                <IconSendOutlineRegular />
+                              </button>
+                            </Tooltip>
+                          )}
                       </>
                     )}
                 </div>}

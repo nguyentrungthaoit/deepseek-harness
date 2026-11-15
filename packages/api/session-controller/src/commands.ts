@@ -477,6 +477,14 @@ export class SessionCommandController {
     if (request.action.kind === 'steer' && (target !== 'next-turn' || agent.status !== 'running')) {
       throw new RemoteError('session/steer-unavailable', 'current turn no longer accepts steering', { itemId: request.itemId })
     }
+    if ((request.action.kind === 'move' || request.action.kind === 'run')
+      && (target !== 'next-turn' || message.source.kind !== 'user')) {
+      throw new RemoteError(
+        'gateway/bad-request',
+        'only user-written next-turn queue items can be reordered or started',
+        {},
+      )
+    }
     switch (request.action.kind) {
       case 'edit':
         agent.inbox.replace(request.itemId, freezeMessage<UserMessage>({
@@ -495,6 +503,17 @@ export class SessionCommandController {
       case 'steer':
         agent.inbox.remove(request.itemId)
         agent.steer(message)
+        break
+      case 'move': {
+        const index = agent.inbox.nextTurn.indexOf(message)
+        const destination = request.action.direction === 'up' ? index - 1 : index + 1
+        if (destination < 0 || destination >= agent.inbox.nextTurn.length) break
+        agent.inbox.remove(request.itemId)
+        agent.inbox.splice('next-turn', destination, 0, [message])
+        break
+      }
+      case 'run':
+        await runQueuedNow(agent, message)
         break
       /* v8 ignore next 2 -- closed-union exhaustiveness guard */
       default:
@@ -597,6 +616,37 @@ function resolvePromptFileReceipts(
     return { type: 'file', attachment }
   })
   return { content: resolved, receiptIds: [...receiptIds] }
+}
+
+/**
+ * Start one parked next-turn item on an idle Agent. The Agent has no
+ * message-free wake, so the item is re-sent inside a maintenance task: a
+ * waking send during maintenance latches and replays when the task settles,
+ * and the item is moved to the queue head first so that replay claims it.
+ * The remaining items keep their order and run after it.
+ * @param agent - idle Agent that owns the item.
+ * @param message - user-written next-turn item to start.
+ * @returns after the latched wake has been released.
+ */
+async function runQueuedNow(agent: Agent, message: UserMessage): Promise<void> {
+  if (agent.status === 'running') {
+    throw new RemoteError('session/agent-busy', 'queued items start only while the agent is idle', { reason: 'running' })
+  }
+  let task: Promise<void>
+  try {
+    task = agent.runMaintenance(() => {
+      agent.inbox.remove(message.id)
+      agent.followup(message)
+      if (agent.inbox.nextTurn[0]?.id !== message.id) {
+        agent.inbox.remove(message.id)
+        agent.inbox.prepend('next-turn', message)
+      }
+      return Promise.resolve()
+    })
+  } catch (error: unknown) {
+    throw new RemoteError('session/agent-busy', 'queued item cannot start during agent maintenance', { reason: String(error) })
+  }
+  await task
 }
 
 function hasPromptRequest(agent: Agent, requestId: SessionRequestId): boolean {

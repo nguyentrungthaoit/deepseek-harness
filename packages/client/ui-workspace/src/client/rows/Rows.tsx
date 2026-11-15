@@ -396,6 +396,42 @@ function sessionStatuses(
   return [{ state: 'idle', label: t('status.idle') }]
 }
 
+interface SessionSecondary {
+  label: string
+  /** Waiting rows read as warnings; every other state keeps the tertiary caption color. */
+  warning: boolean
+}
+
+/**
+ * The short caption under a Session title naming its specific state; idle rows have none.
+ * Pending interaction outranks activity, which outranks the finished-but-unread reminder.
+ */
+function sessionSecondary(
+  node: Pick<SessionNode, 'pendingInteraction' | 'running' | 'runningSubagentCount' | 'completed'>,
+  t: RowTranslate,
+): SessionSecondary | undefined {
+  switch (node.pendingInteraction) {
+    case 'approval': return { label: t('secondary.approval'), warning: true }
+    case 'question': return { label: t('secondary.question'), warning: true }
+    case 'plan-review': return { label: t('secondary.planReview'), warning: true }
+    case undefined: break
+    /* v8 ignore next -- closed PendingInteractionStatus union */
+    default: return assertNever(node.pendingInteraction)
+  }
+  if (node.runningSubagentCount > 0) {
+    return {
+      label: t(
+        node.runningSubagentCount === 1 ? 'secondary.runningSubagents.one' : 'secondary.runningSubagents.other',
+        { n: node.runningSubagentCount },
+      ),
+      warning: false,
+    }
+  }
+  if (node.running) return { label: t('secondary.running'), warning: false }
+  if (node.completed) return { label: t('secondary.doneUnread'), warning: false }
+  return undefined
+}
+
 /** Primary status dot plus every status's screen-reader label, shared by the search and session rows. */
 function SessionStatusDots({ statuses }: { statuses: readonly [SessionStatus, ...SessionStatus[]] }) {
   return (
@@ -567,6 +603,7 @@ export function SessionNodeItem({
   const statuses = sessionStatuses(node, t)
   const primaryStatus = statuses[0]
   const showStatus = primaryStatus.state !== 'idle'
+  const secondary = row.archived || row.blank ? undefined : sessionSecondary(node, t)
   // Archived rows hold their in-place grayed slot, so manual reorder cannot
   // move them. Pinned rows drag within the pinned block: the browser gates
   // their drop targets to fellow pinned rows.
@@ -633,14 +670,21 @@ export function SessionNodeItem({
           ? <SessionStatusDots statuses={statuses} />
           : renderSlot('sidebar.session.row.leading', { sessionId: node.id }))}
       </span>
-      <span
-        ref={titleRef}
-        className={css.title}
-        onDoubleClick={row.blank
-          ? undefined
-          : (e) => { e.stopPropagation(); onRenameRequest(node.id, row.title) }}
-      >
-        {title}
+      <span className={css.titleStack}>
+        <span
+          ref={titleRef}
+          className={clsx(css.title, secondary !== undefined && css.titleWithSecondary)}
+          onDoubleClick={row.blank
+            ? undefined
+            : (e) => { e.stopPropagation(); onRenameRequest(node.id, row.title) }}
+        >
+          {title}
+        </span>
+        {secondary !== undefined && (
+          <span className={clsx(css.secondary, secondary.warning && css.secondaryWarning)}>
+            {secondary.label}
+          </span>
+        )}
       </span>
       {/* A blank New Session row is a provisional placeholder: nothing has
           happened in it yet, so a "now" timestamp and the row verbs

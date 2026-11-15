@@ -790,6 +790,7 @@ describe('SkillRegistry registry', () => {
     const warnings: string[] = []
     ctx.logger.warn = ((message: unknown) => { warnings.push(String(message)) }) as typeof ctx.logger.warn
     const disposeThrowing = ctx.on('skills/change', () => { throw new Error('observer threw') })
+    // oxlint-disable-next-line typescript/no-misused-promises -- deliberate rejection proves notification containment
     const disposeRejecting = ctx.on('skills/change', () => Promise.reject(new Error('observer rejected')))
     let observed = 0
     const disposeObserver = ctx.on('skills/change', () => { observed += 1 })
@@ -955,6 +956,7 @@ describe('SkillRegistry registry', () => {
       name: 'hostile-failure',
       list() {
         // Deliberately violate the provider contract to prove containment is total.
+        // oxlint-disable-next-line typescript/prefer-promise-reject-errors
         return Promise.reject(hostileFailure)
       },
       async get() {

@@ -186,7 +186,7 @@ async function promptWithPinnedSkills(
 function isPinnedSubagentSkill(skill: SkillSummary): boolean {
   if (!isUserInvocable(skill)) return false
   if (!('subagent' in skill)) return false
-  return skill.subagent === true
+  return skill.subagent
 }
 
 /** Locale-independent code-unit order, the same order `ctx.skills.list()` already uses. */
@@ -280,6 +280,7 @@ function readResult(
   cancelled: boolean,
   structured?: { captured?: { value: unknown } | undefined },
 ): SubagentResult {
+  // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
   const own = child.session.snapshotEvents(boundary)
   // `droppedUnrun` is deliberately unread: a one-shot prompt is claimed by its
   // awaited first turn almost immediately, and the owner's own teardown is the

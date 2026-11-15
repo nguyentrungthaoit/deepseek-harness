@@ -17,17 +17,19 @@ import type {} from '@deepseek-ai/dsh-subprocess'
 import type {} from '@deepseek-ai/dsh-tools'
 import { GitRunner } from './git.ts'
 import { TurnRecorder } from './recorder.ts'
+import { readRepository, repositoryRoot } from './repository.ts'
 import type { WorkspaceChanges } from './types.ts'
 
 export type {
-  WorkspaceChangedFile, WorkspaceChanges, WorkspaceChangesSummary, WorkspaceDiffHunk, WorkspaceFileDiff,
+  WorkspaceChangedFile, WorkspaceChanges, WorkspaceChangesSummary, WorkspaceCommit, WorkspaceDiffHunk, WorkspaceFileDiff,
+  WorkspaceRepository,
 } from './types.ts'
 
 /** Stable Loader identity. */
 export const name = 'workspace-changes'
 
-/** Services used to run git and observe turns. */
-export const inject = ['subprocess']
+/** Services used to run git, observe turns, and find live Sessions. */
+export const inject = ['subprocess', 'sessions']
 
 /** Snapshot, capture, and comparison bounds. Invalid values fail plugin load. */
 export interface Config {
@@ -44,6 +46,8 @@ export interface Config {
   maxFileBytes: number
   /** Milliseconds a line comparison may run before it degrades to whole-file replacement. */
   diffTimeoutMs: number
+  /** Largest commit count one `repository` read may return; a larger request is clamped to it. */
+  maxCommits: number
 }
 
 /** Schemastery validation for {@link Config}. */
@@ -53,6 +57,7 @@ export const Config: z<Config> = z.object({
   maxFiles: z.number().default(500),
   maxFileBytes: z.number().default(2 * 1024 * 1024),
   diffTimeoutMs: z.number().default(100),
+  maxCommits: z.number().default(50),
 })
 
 function eligible(session: Session): string | undefined {
@@ -94,7 +99,7 @@ async function resolveGit(ctx: Context, signal: AbortSignal): Promise<string | n
 export function apply(ctx: Context, config: Config): void {
   for (const [field, value] of [
     ['timeoutMs', config.timeoutMs], ['outputMaxBytes', config.outputMaxBytes], ['maxFiles', config.maxFiles],
-    ['maxFileBytes', config.maxFileBytes], ['diffTimeoutMs', config.diffTimeoutMs],
+    ['maxFileBytes', config.maxFileBytes], ['diffTimeoutMs', config.diffTimeoutMs], ['maxCommits', config.maxCommits],
   ] as const) {
     if (!Number.isSafeInteger(value) || value < 1) throw new Error(`workspace-changes requires a positive integer ${field}`)
   }
@@ -114,6 +119,15 @@ export function apply(ctx: Context, config: Config): void {
   const service: WorkspaceChanges = {
     summary: (sessionId, seq) => byId.get(sessionId)?.summary(seq),
     diff: (sessionId, seq, index, signal) => byId.get(sessionId)?.diff(seq, index, signal) ?? Promise.resolve(undefined),
+    repository: async (sessionId, limit, signal) => {
+      const session = ctx.sessions.get(sessionId)
+      const cwd = session === undefined ? undefined : eligible(session)
+      const git = cwd === undefined ? null : await gitRunner()
+      if (cwd === undefined || git === null) return undefined
+      const read = AbortSignal.any([signal, lifetime.signal])
+      const root = await repositoryRoot(git, cwd, read)
+      return root === null ? undefined : readRepository(git, root, Math.min(Math.max(1, limit), config.maxCommits), read)
+    },
   }
   ctx.provide('workspaceChanges', service)
   let runner: Promise<GitRunner | null> | undefined

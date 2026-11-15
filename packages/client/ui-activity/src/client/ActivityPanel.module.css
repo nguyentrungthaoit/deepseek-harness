@@ -1,0 +1,425 @@
+/* Activity tab: meters above a flame graph. Every color is a `--dsw-alias-*`
+ * token; span kinds share one class per kind for bars and legend swatches. */
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-sizing: border-box;
+  height: 100%;
+  min-height: 0;
+  padding: 12px 16px;
+  overflow-y: auto;
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.root > * {
+  /* Sections keep their content height; the tab body scrolls instead of
+   * squeezing them into each other. */
+  flex-shrink: 0;
+}
+
+.titleIcon {
+  flex: 0 0 auto;
+  margin-right: 6px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.meters {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.meter {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.meterHead,
+.stat {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.meterLabel {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.meterValue {
+  color: var(--dsw-alias-label-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.meterTrack {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  corner-shape: round;
+  background: var(--dsw-alias-bg-layer-2);
+}
+
+.meterFill {
+  height: 100%;
+  border-radius: inherit;
+  corner-shape: round;
+  background: var(--dsw-alias-brand-primary);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+.chip {
+  padding: 0 6px;
+  border-radius: 999px;
+  corner-shape: round;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.empty {
+  margin: 0;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sectionHead {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.heading {
+  flex: 0 0 auto;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.status {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dsw-alias-label-tertiary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.statusLive {
+  color: var(--dsw-alias-brand-primary);
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.legendItem {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.spans {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* The expanded list of a long Turn scrolls inside the section so the axis
+ * stays in view. */
+.spansAll {
+  max-height: 400px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.more {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--dsw-alias-brand-primary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.more:hover {
+  text-decoration: underline;
+}
+
+.spanRow {
+  display: grid;
+  flex: 0 0 auto;
+  grid-template-columns: minmax(64px, 32%) minmax(0, 1fr);
+  gap: 6px;
+  align-items: center;
+  height: 18px;
+}
+
+.spanName {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dsw-alias-label-secondary);
+  font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.track {
+  position: relative;
+  height: 12px;
+  border-radius: 2px;
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.bar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  min-width: 2px;
+  overflow: hidden;
+  border-radius: 2px;
+  outline-offset: 1px;
+}
+
+.wait {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  background: var(--dsw-alias-label-dimmed);
+}
+
+.waiting {
+  background: var(--dsw-alias-label-dimmed);
+}
+
+.thinking {
+  background: var(--dsw-alias-label-deep-diving);
+}
+
+.writing {
+  background: var(--dsw-alias-brand-primary);
+}
+
+.tool {
+  background: var(--dsw-alias-state-success-primary);
+}
+
+.subagent {
+  background: var(--dsw-alias-state-warn-primary);
+}
+
+.failed {
+  background: var(--dsw-alias-state-error-primary);
+}
+
+.running {
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.6;
+  }
+}
+
+.axis {
+  position: relative;
+  container: activity-axis / inline-size;
+  height: 14px;
+  overflow: hidden;
+  margin-left: calc(max(64px, 32%) + 6px);
+  border-top: 0.5px solid var(--dsw-alias-border-l3);
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.tick {
+  position: absolute;
+  top: 2px;
+  white-space: nowrap;
+}
+
+/* Hide ticks that would crowd the narrow rightbar; the first and last stay. */
+@container activity-axis (width < 220px) {
+  .tick:nth-child(even):not(:last-child) {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .running {
+    animation: none;
+  }
+}
+
+/* Git mini graph. */
+.git,
+.speed {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.gitChanges {
+  margin: 0;
+  color: var(--dsw-alias-label-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.commits {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.commit {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: center;
+  height: 24px;
+}
+
+.graphCell {
+  display: block;
+  overflow: visible;
+}
+
+.graphCell line {
+  stroke: currentcolor;
+  stroke-width: 1.5;
+}
+
+.graphCell circle {
+  fill: currentcolor;
+}
+
+.lane0 {
+  color: var(--dsw-alias-brand-primary);
+}
+
+.lane1 {
+  color: var(--dsw-alias-state-success-primary);
+}
+
+.lane2 {
+  color: var(--dsw-alias-state-warn-primary);
+}
+
+.lane3 {
+  color: var(--dsw-alias-label-deep-diving);
+}
+
+.hash {
+  color: var(--dsw-alias-label-tertiary);
+  font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11px;
+}
+
+.subject {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.age {
+  color: var(--dsw-alias-label-tertiary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Model speed charts. */
+.chart {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.hourBars {
+  display: grid;
+  grid-template-columns: repeat(24, minmax(0, 1fr));
+  gap: 1px;
+  height: 32px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hourSlot {
+  display: flex;
+  min-width: 0;
+}
+
+.hourTrack {
+  display: flex;
+  align-items: flex-end;
+  width: 100%;
+  height: 100%;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l3);
+  outline-offset: 1px;
+}
+
+.hourBar {
+  display: block;
+  width: 100%;
+  border-radius: 1px 1px 0 0;
+  background: var(--dsw-alias-brand-primary);
+  opacity: 0.55;
+}
+
+.hourNow {
+  opacity: 1;
+}
+
+.spark {
+  display: block;
+  width: 100%;
+  height: 24px;
+  overflow: visible;
+}
+
+.sparkLine {
+  stroke: var(--dsw-alias-brand-primary);
+  stroke-width: 1.5;
+}
+
+.sparkDot {
+  fill: var(--dsw-alias-brand-primary);
+}

@@ -1,0 +1,33 @@
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 100%;
+  padding: 8px 12px;
+  border: 0.5px solid var(--dsw-alias-border-l1);
+  border-radius: var(--dsw-radius-md);
+  color: var(--dsw-alias-label-secondary);
+  font-size: calc(var(--dsh-content-font-size, 14px) - 2px);
+  line-height: calc(20px + var(--dsh-content-font-delta, 0px));
+  font-variant-numeric: tabular-nums;
+}
+
+.title {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fact {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}

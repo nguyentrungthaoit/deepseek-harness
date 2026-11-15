@@ -49,6 +49,8 @@ kind: "package-reference"
 
 每个打开的 `DirectoryNode` 在 Tab 生命周期内持有自己的目标监听；折叠关闭该节点及其不可见后代。祖先恢复期间的展开状态变化会更新存储和待恢复节点，后代恢复时遵循最新展开偏好。自动刷新默认开启；独立开关暂时隐藏，状态、文案、样式与切换逻辑保留。目录读取期间或收尾时收到的变化仍会留待下一次刷新。
 
+**活动热图。** 智能体工作时，文件行会按它对文件做的事着色：读取为蓝色（`--dsw-alias-state-business-primary`），编辑或覆盖写入为琥珀色（`state-warn-primary`），新建为绿色（`state-success-primary`）。颜色在 `heatFadeSeconds`（默认 180）秒内线性褪去；悬停在着色文件上会显示类似“编辑 2 次 · 30 秒前”的提示。这完全在客户端完成：`file-activity.ts` 从会话的实时事件窗口（`binding.eventSource`，即对话组装所用的同一个拉取式来源，经 `ctx.sessions` 取得并以 `fileActivity` 钩子交给主体）推导，`read`、`read_image`、`read_document`、`edit`、`write`、`str_replace_editor` 调用仅在其 `tool/result` 无错误落定后才计入。结果元数据为 `create` 的 `write` 与编辑器的 `create` 视为新建；颜色取最强的一种（新建高于编辑，编辑高于读取）。路径比较前会统一分隔符、`.`/`..` 与盘符大小写，相对路径按树根解析。早于褪色时长的事件不会记录，且只有仍有颜色在褪去时才会有一个定时器重绘树。在 `prefers-reduced-motion` 下，颜色保持单一强度、没有过渡，直到过期。头部的闪光按钮可为每棵树开关热图；插件的 `Config` 设定初始状态（`heatmap`，默认开启）与褪色时长（`heatFadeSeconds`，默认 180，至少 5）。尚未加载的层级中的文件和目录不会着色。
+
 <a id="model-experience"></a>
 ## 模型体验
 

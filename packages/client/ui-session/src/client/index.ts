@@ -29,6 +29,8 @@ import type {
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import { renderSessionArea } from './session-provider.tsx'
 
+export { SESSION_ACTIVITY_RANK, sessionActivity, type SessionAttention } from './activity.ts'
+
 /** Selector hook over the Session Controller list and current selection. */
 export type UseSessions = SnapshotSelectorHook<SessionListState>
 /** Selector hook over one Session's lifecycle and control state. */

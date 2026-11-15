@@ -83,6 +83,8 @@ The kernel packages boot and serve the page; the UI feature packages present it.
 | [`ui-settings-web-search/`](ui-settings-web-search/README.md) | Provides the web-search settings page on the Plugins page | — |
 | [`ui-plugin-manager/`](ui-plugin-manager/README.md) | Contributes the sidebar Plugins panel: install, enable, disable, retry, and compose installed packages | — |
 | `ui-mcp-manager/` | Sidebar MCP panel: lists MCP servers with connection status and tools, and adds, edits, removes, toggles, and reconnects them through the `mcp` Remote | — |
+| [`ui-lock-screen/`](ui-lock-screen/README.md) | Pixel-art lock screen: a sidebar Lock button, shortcut, and General settings row cover the page with live agent status until the local password is entered | — |
+| [`ui-activity/`](ui-activity/README.md) | Right Sidebar Activity tab: live meters and a flame-graph timeline of the Session's latest Turn | — |
 | [`ui-settings-plugin-inventory/`](ui-settings-plugin-inventory/README.md) | Contributes the read-only Host Loader inventory tab to Plugins settings | — |
 | [`ui-deliverables/`](ui-deliverables/README.md) | Produces the changed-files card with its comparison tabs, delivery cards, and clickable final-response file references | — |
 | [`ui-message-feedback/`](ui-message-feedback/README.md) | Provides message ratings and feedback dialogs opened from ratings, `/feedback`, or the Session Header menu | `ctx.feedbackUi` |

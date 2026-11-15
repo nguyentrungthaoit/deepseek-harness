@@ -3624,6 +3624,13 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'the comparison, or undefined once its Session was disposed, when this Host never recorded it, or when no file has that index.',
         throws: ['when a snapshot read fails for a live Session.'],
       },
+      {
+        signature: 'repository(sessionId: SessionId, limit: number, signal: AbortSignal): Promise<WorkspaceRepository | undefined>',
+        description: 'Read the latest commits and the uncommitted change counts of a live Session\'s repository. Read-only.',
+        parameters: [{ name: 'sessionId', description: 'the Session whose working directory is inspected.' }, { name: 'limit', description: 'commits requested; clamped to the plugin\'s `maxCommits`.' }, { name: 'signal', description: 'cancels the git reads.' }],
+        returns: 'the repository, or undefined when the Session is not live, has no working directory, is a subagent, is outside a git repository, or git is unavailable.',
+        throws: ['when a git read fails or times out.'],
+      },
     ],
   },
   {
@@ -6356,7 +6363,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'QueueAction',
-    declaration: 'export type QueueAction = {\n    readonly kind: \'edit\';\n    readonly content: readonly TextBlock[];\n} | {\n    readonly kind: \'remove\';\n} | {\n    readonly kind: \'steer\';\n};',
+    declaration: 'export type QueueAction = {\n    readonly kind: \'edit\';\n    readonly content: readonly TextBlock[];\n} | {\n    readonly kind: \'remove\';\n} | {\n    readonly kind: \'steer\';\n} | {\n    readonly kind: \'move\';\n    readonly direction: \'up\' | \'down\';\n} | {\n    readonly kind: \'run\';\n};',
   },
   {
     name: 'ReadFileLine',
@@ -8387,6 +8394,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface WorkspaceChangesSummary {\n    turn: number;\n    cwd: string;\n    files: WorkspaceChangedFile[];\n    total: number;\n    added: number;\n    deleted: number;\n    snapshot?: {\n        before: string;\n        after: string;\n    };\n}',
   },
   {
+    name: 'WorkspaceCommit',
+    declaration: 'export interface WorkspaceCommit {\n    hash: string;\n    parents: string[];\n    time: number;\n    subject: string;\n}',
+  },
+  {
     name: 'WorkspaceCreateRequest',
     declaration: 'export interface WorkspaceCreateRequest {\n    readonly path: string;\n}',
   },
@@ -8477,6 +8488,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'WorkspaceRenameRequest',
     declaration: 'export interface WorkspaceRenameRequest {\n    readonly workspaceId: WorkspaceId;\n    readonly title: string;\n}',
+  },
+  {
+    name: 'WorkspaceRepository',
+    declaration: 'export interface WorkspaceRepository {\n    branch: string | null;\n    commits: WorkspaceCommit[];\n    files: number;\n    added: number;\n    deleted: number;\n}',
   },
   {
     name: 'WorkspaceUnarchiveSessionRequest',
