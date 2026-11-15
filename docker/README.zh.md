@@ -160,7 +160,7 @@ jdtls 按镜像的离线配置读取 Maven，使用同一个 `/m2/repository`。
 
 ### 通过 SSH 使用 Git
 
-镜像包含 `openssh-client` 和 `git-lfs`。把 `DSH_SSH_DIR` 指向宿主机上包含私钥、`config` 和 `known_hosts` 的目录；entrypoint 会把它复制到 `/root/.ssh` 并设为 600 权限（直接从 Windows 挂载的密钥显示为 0777，ssh 会拒绝）。agent 能使用这把密钥，因此建议使用单独的 deploy key，而不是个人密钥。`known_hosts` 必须已包含 Git 主机，因为沙箱中的命令无法写入它。
+镜像包含 `openssh-client` 和 `git-lfs`。把 `DSH_SSH_DIR` 指向宿主机上包含私钥、`config` 和 `known_hosts` 的目录；entrypoint 会把它复制到运行容器的用户 home 下的 `.ssh`（`/root/.ssh`，compose 设置 `user: 1000:1000` 时为 `/home/node/.ssh`）并设为 600 权限（直接从 Windows 挂载的密钥显示为 0777，ssh 会拒绝）。agent 能使用这把密钥，因此建议使用单独的 deploy key，而不是个人密钥。`known_hosts` 必须已包含 Git 主机，因为沙箱中的命令无法写入它。
 
 ### 其他命令行工具
 

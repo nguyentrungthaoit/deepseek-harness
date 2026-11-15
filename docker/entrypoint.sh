@@ -7,13 +7,17 @@ mkdir -p "$DSH_HOME"
 
 # Optional SSH keys for git over SSH (compose: DSH_SSH_DIR, mounted read-only at
 # /run/dsh-ssh). Windows bind mounts show every file as 0777, which ssh rejects,
-# and ssh reads the passwd home (/root), not $HOME, so copy them there with
-# strict modes.
+# and ssh reads the passwd home (/root, or /home/node for uid 1000), not $HOME,
+# so copy them there with strict modes.
 if [ -d /run/dsh-ssh ] && [ -n "$(ls -A /run/dsh-ssh 2>/dev/null)" ]; then
-  mkdir -p /root/.ssh
-  cp -R /run/dsh-ssh/. /root/.ssh/
-  chmod 700 /root/.ssh
-  find /root/.ssh -type f -exec chmod 600 {} +
+  ssh_home="$(getent passwd "$(id -u)" | cut -d: -f6)"
+  ssh_dir="${ssh_home:-$HOME}/.ssh"
+  if mkdir -p "$ssh_dir" 2>/dev/null && cp -R /run/dsh-ssh/. "$ssh_dir/"; then
+    chmod 700 "$ssh_dir"
+    find "$ssh_dir" -type f -exec chmod 600 {} +
+  else
+    echo "entrypoint: cannot copy SSH keys to $ssh_dir; git over SSH is unavailable" >&2
+  fi
 fi
 
 BIND_PATCH="/app/docker/web-bind.patch.yml"

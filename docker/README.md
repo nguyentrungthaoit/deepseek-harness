@@ -160,7 +160,7 @@ Container phải ra được host và port của DB. Nên dùng tài khoản DB 
 
 ### Git qua SSH
 
-Image có `openssh-client` và `git-lfs`. Đặt `DSH_SSH_DIR` trỏ tới một thư mục trên host chứa private key, `config` và `known_hosts`; entrypoint copy nó vào `/root/.ssh` với quyền 600 (ssh từ chối key mount thẳng từ Windows vì hiện là 0777). Agent dùng được key này, nên nên dùng deploy key riêng thay vì key cá nhân. `known_hosts` phải có sẵn host Git, vì command trong sandbox không ghi thêm được.
+Image có `openssh-client` và `git-lfs`. Đặt `DSH_SSH_DIR` trỏ tới một thư mục trên host chứa private key, `config` và `known_hosts`; entrypoint copy nó vào `.ssh` trong home của user chạy container (`/root/.ssh`, hoặc `/home/node/.ssh` khi compose đặt `user: 1000:1000`) với quyền 600 (ssh từ chối key mount thẳng từ Windows vì hiện là 0777). Agent dùng được key này, nên nên dùng deploy key riêng thay vì key cá nhân. `known_hosts` phải có sẵn host Git, vì command trong sandbox không ghi thêm được.
 
 ### Tool dòng lệnh khác
 

@@ -140,7 +140,10 @@ PY
 COPY --from=jdk /opt/java/openjdk /opt/java/jdk21
 COPY --from=jdk8 /opt/java/openjdk /opt/java/jdk8
 COPY --from=maven /usr/share/maven /opt/maven
+# The repository is world-writable so a non-root container (compose `user:`)
+# can fill the named volume that seeds from it.
 RUN mkdir -p /m2/repository \
+  && chmod 1777 /m2/repository \
   && cat > /opt/maven/conf/settings.xml <<'XML'
 <?xml version="1.0" encoding="UTF-8"?>
 <settings xmlns="http://maven.apache.org/SETTINGS/1.2.0"
@@ -183,14 +186,18 @@ COPY --from=yq /usr/bin/yq /usr/local/bin/yq
 # reporting false errors in Lombok projects.
 RUN --mount=type=bind,from=downloads,target=/dl \
   unzip -q /dl/sqlcl.zip -d /opt \
+  && chmod -R a+rX /opt/sqlcl \
   && chmod 755 /opt/sqlcl/bin/sql \
   && ln -s /opt/sqlcl/bin/sql /usr/local/bin/sql \
   && mkdir -p /opt/jdtls \
   && tar -xzf /dl/jdtls.tar.gz -C /opt/jdtls \
-  && install -m 644 /dl/lombok.jar /opt/jdtls/lombok.jar
+  && install -m 644 /dl/lombok.jar /opt/jdtls/lombok.jar \
+  && mkdir -p /var/cache/dsh-jdtls \
+  && chmod 1777 /var/cache/dsh-jdtls
+# State is kept per uid so the image also runs as a non-root `user:`.
 COPY --chmod=755 <<'SH' /usr/local/bin/dsh-jdtls
 #!/bin/sh
-base=/var/cache/dsh-jdtls
+base=/var/cache/dsh-jdtls/$(id -u)
 key=$(pwd | sha1sum | cut -c1-40)
 mkdir -p "$base/home" "$base/data"
 export JAVA_HOME=/opt/java/jdk21
