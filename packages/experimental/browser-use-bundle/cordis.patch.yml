@@ -1,0 +1,13 @@
+# Per-Session Chromium browser tools through Playwright MCP. `executablePath`
+# follows DSH_BROWSER_CHROMIUM when set (the Docker image points it at a
+# launcher that adds --no-sandbox); otherwise Playwright discovers its own
+# Chromium installation.
+- insert:
+    - id: browser-use
+      name: '@deepseek-ai/dsh-browser-use'
+    - id: browser-playwright
+      name: '@deepseek-ai/dsh-experimental-browser-use-playwright-mcp'
+      config:
+        mode: launch
+        headless: true
+        executablePath: !!js process.env.DSH_BROWSER_CHROMIUM || undefined

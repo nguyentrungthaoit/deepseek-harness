@@ -5,6 +5,17 @@ set -eu
 export DSH_HOME
 mkdir -p "$DSH_HOME"
 
+# Optional SSH keys for git over SSH (compose: DSH_SSH_DIR, mounted read-only at
+# /run/dsh-ssh). Windows bind mounts show every file as 0777, which ssh rejects,
+# and ssh reads the passwd home (/root), not $HOME, so copy them there with
+# strict modes.
+if [ -d /run/dsh-ssh ] && [ -n "$(ls -A /run/dsh-ssh 2>/dev/null)" ]; then
+  mkdir -p /root/.ssh
+  cp -R /run/dsh-ssh/. /root/.ssh/
+  chmod 700 /root/.ssh
+  find /root/.ssh -type f -exec chmod 600 {} +
+fi
+
 BIND_PATCH="/app/docker/web-bind.patch.yml"
 # Set DSH_DOCKER_BIND_ALL=0 to keep the product loopback default (127.0.0.1).
 BIND_ALL="${DSH_DOCKER_BIND_ALL:-1}"

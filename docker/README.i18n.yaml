@@ -26,6 +26,27 @@
 /docker-image-c-ng-ty/d-ng-t-i-c-ng-ty-ch-docker/ollama-model-tr-n-m-y-host:
   en: 01467d0a4eb6003c
   zh: 5f518f9f14d9a862
+/docker-image-c-ng-ty/d-ng-t-i-c-ng-ty-ch-docker/java-v-maven:
+  en: 67edf8eddc48cbb0
+  zh: aebbb30aac617efa
+/docker-image-c-ng-ty/d-ng-t-i-c-ng-ty-ch-docker/tr-nh-duy-t-playwright:
+  en: e8e7c6645e8a4843
+  zh: 45474fade69525b5
+/docker-image-c-ng-ty/d-ng-t-i-c-ng-ty-ch-docker/i-u-h-ng-code-java-lsp:
+  en: e30217fec3a2639e
+  zh: e242ff3f7def6584
+/docker-image-c-ng-ty/d-ng-t-i-c-ng-ty-ch-docker/database-oracle-postgresql:
+  en: 012f74c215f4247d
+  zh: 6a499cee4f81b83e
+/docker-image-c-ng-ty/d-ng-t-i-c-ng-ty-ch-docker/git-qua-ssh:
+  en: eaf1ebfe33eca6cf
+  zh: 6de57fc047ebad39
+/docker-image-c-ng-ty/d-ng-t-i-c-ng-ty-ch-docker/tool-d-ng-l-nh-kh-c:
+  en: 21c0ae8520dc8e3a
+  zh: 1ea8a3e0585037be
+/docker-image-c-ng-ty/d-ng-t-i-c-ng-ty-ch-docker/npm-v-pip-qua-nexus:
+  en: 87bbc1cdfb1768d8
+  zh: 83e1e42d48e9eb78
 /docker-image-c-ng-ty/d-ng-t-i-c-ng-ty-ch-docker/ch-n-workspace-directory-picker:
   en: 4c0ac4805ca350a9
   zh: cf59f12319a6dfe9

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Browser tools",
+    "description": "Let agents open pages, click, fill forms and take screenshots in a headless Chromium per Session"
+  }
+}

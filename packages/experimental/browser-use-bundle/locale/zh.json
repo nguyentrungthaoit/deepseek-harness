@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "浏览器工具",
+    "description": "让 agent 在每个 Session 独立的 headless Chromium 中打开页面、点击、填写表单和截图。"
+  }
+}

@@ -66,24 +66,24 @@ docker compose --env-file docker/compose.env down
 ## 在公司使用（只需 Docker）
 
 ```sh
-docker pull nguyentrungthaoit/dsh:0.2.1-alpha.9
+docker pull nguyentrungthaoit/dsh:0.2.1-alpha.10
 ```
 
 ### Web UI
 
 ```sh
-docker run --rm -p 3080:3080 \
+docker run --rm -p 3080:3080 --shm-size=1g \
   -e DEEPSEEK_API_KEY=sk-... \
   -v dsh-home:/data/dsh \
   -v /path/to/project:/workspace \
   -w /workspace \
-  nguyentrungthaoit/dsh:0.2.1-alpha.9
+  nguyentrungthaoit/dsh:0.2.1-alpha.10
 ```
 
 打开 `http://127.0.0.1:3080`。如果通过公司 hostname 访问：
 
 ```sh
-... nguyentrungthaoit/dsh:0.2.1-alpha.9 web --no-open --port 3080 --trusted-host app.company.local:3080
+... nguyentrungthaoit/dsh:0.2.1-alpha.10 web --no-open --port 3080 --trusted-host app.company.local:3080
 ```
 
 ### Headless（单个任务）
@@ -93,7 +93,7 @@ docker run --rm \
   -e DEEPSEEK_API_KEY=sk-... \
   -v /path/to/project:/workspace \
   -w /workspace \
-  nguyentrungthaoit/dsh:0.2.1-alpha.9 \
+  nguyentrungthaoit/dsh:0.2.1-alpha.10 \
   --profile headless "summarize this repository"
 ```
 
@@ -115,6 +115,66 @@ http://host.docker.internal:11434/v1
 
 （Docker Desktop Windows/Mac。不要使用 `http://127.0.0.1:11434/v1`。）
 
+### Java 与 Maven
+
+镜像内置 JDK 21 和 JDK 8（Temurin）以及 Maven 3.9。容器访问不了 registry，因此 Maven 从本地仓库 `/m2/repository` 读取依赖，默认离线运行（`-o`）。
+
+复用宿主机已下载的依赖：在 `docker/compose.env` 中把 `DSH_MAVEN_REPO` 指向宿主机的仓库目录（包含 `com/`、`org/` 等的目录；默认是 `.m2/repository`，若改过则是 `settings.xml` 中 `<localRepository>` 的路径），然后重建容器：
+
+```sh
+DSH_MAVEN_REPO=C:/Users/<you>/.m2/repository
+```
+
+该目录中必须已有依赖，即项目曾在宿主机上用 Maven 构建过（`mvn -DskipTests package` 或 `mvn dependency:go-offline`）。项目新增依赖时，在宿主机上构建一次下载下来，容器立即可见。宿主机的 `settings.xml` 不会被使用；镜像已配置好本地仓库。出现 `Cannot access ... in offline mode` 表示该构件（通常是插件）还不在宿主机的仓库中。
+
+agent 在沙箱中运行的命令对 `/m2` 只读；离线构建和测试可以运行，而 `mvn install`（写入 `/m2`）需要允许在沙箱外运行。不设置 `DSH_MAVEN_REPO` 时，`/m2/repository` 是容器自己的 `dsh-m2` 卷。如果容器能访问 Maven 仓库（通过代理或 Nexus），在 `docker/compose.env` 中加一行 `MAVEN_ARGS=`（留空），让 Maven 在线下载。
+
+JDK 21 是默认版本（`JAVA_HOME`、`java`、`mvn`）。Java 8 项目可以用以下任一方式使用 JDK 8：
+
+- 按命令用 JDK 8 运行 Maven：`JAVA_HOME=$JAVA_HOME_8 mvn -DskipTests package`。项目使用无法在 Java 21 上运行的旧插件时需要这种方式。
+- Maven 仍运行在 JDK 21 上，由 `maven-toolchains-plugin` 在编译和测试时选择 JDK 8：镜像已在 `/opt/maven/conf/toolchains.xml` 中声明两个 JDK（version `1.8` 和 `21`，vendor `temurin`）。
+
+变量 `JAVA_HOME_8` 和 `JAVA_HOME_21` 分别指向 `/opt/java/jdk8` 和 `/opt/java/jdk21`。镜像不包含 JDK 25。
+
+### 浏览器（Playwright）
+
+镜像在构建时已安装 Chromium，有两种用法：
+
+- **agent 的浏览器工具**：在 Web 侧边栏打开 **插件**，启用 **浏览器工具**（Bundle [`browser-use-bundle`](../packages/experimental/browser-use-bundle/README.zh.md)）；只需启用一次，状态保存在 `dsh-home` 卷中。新建或重新打开的 Session 会带上 Playwright MCP 工具，每个 Session 一个独立的 headless Chromium，不保存 profile。它是 experimental 包，因此不在默认 preset 中。镜像中该 Bundle 使用 `DSH_BROWSER_CHROMIUM` 启动器。
+- **脚本**：默认 venv 中带有 Python 版 Playwright，agent 可以运行 `python3 script.py`，使用 `from playwright.sync_api import sync_playwright`。
+
+容器以 root 运行，因此 Chromium 必须带 `--no-sandbox` 运行。浏览器工具已经通过启动器 `/usr/local/bin/dsh-chromium` 启动；Python 脚本也能运行，因为 Playwright 默认已关闭沙箱。Compose 设置了 `shm_size: 1gb`，因为 Docker 默认的 64 MB 会让 Chromium 崩溃；使用 `docker run` 时请加 `--shm-size=1g`。能打开哪些页面取决于容器的网络：要让 agent 访问内部应用，该主机必须能通过代理（Squid allowlist）。关闭浏览器工具：在插件管理页禁用该 Bundle。
+
+### Java 代码导航（LSP）
+
+Web preset `standard`、`cordis`、`ptc` 在存在 `DSH_JDTLS` 变量时（镜像已预设，指向 Eclipse JDT Language Server 的启动器 `/usr/local/bin/dsh-jdtls`）启用 `lsp` 工具。agent 用它查找 `.java` 文件的定义、所有引用、实现以及 hover 信息，比 grep 更准确。
+
+jdtls 按镜像的离线配置读取 Maven，使用同一个 `/m2/repository`。在一个项目上的首次查询需要 jdtls 导入项目，可能耗时几分钟（工具超时为 5 分钟）；之后会很快。索引位于容器的 `/var/cache/dsh-jdtls`，不写入 workspace，重建容器后丢失。jdtls 运行在 JDK 21 上；声明 Java 8 的项目（`maven.compiler.source` 1.8）使用指向 JDK 8 的 `JavaSE-1.8` runtime 构建。jdtls 带 Lombok 1.18.48（javaagent）运行，因此使用 Lombok 的项目不会在生成的构造器、getter 或 builder 处报假错误。每个打开的项目堆内存上限为 2 GB。关闭：在 `docker/compose.env` 中设置 `DSH_JDTLS=`（留空）。
+
+### 数据库（Oracle、PostgreSQL）
+
+- PostgreSQL：`psql`（Debian 12 的客户端版本）。
+- Oracle：SQLcl，命令为 `sql`，运行在内置的 JDK 21 上。例如：`sql -S user/password@//db-host:1521/SERVICE`。
+
+容器必须能访问数据库的主机和端口。建议使用只读的开发库账号。dsh 会从 agent 的命令中过滤所有名称包含 `KEY`、`PASSWORD`、`SECRET` 或 `TOKEN` 的环境变量，因此 `DB_PASSWORD` 无法传到 `sql`/`psql`；若要让 agent 自行连接，请在 `docker/compose.env` 中用其他名称的变量保存连接串，例如 `DEV_ORACLE_URL=user/pass@//db-host:1521/SERVICE` 或 `DEV_PG_URL=postgresql://user:pass@db-host:5432/app`，然后运行 `sql -S "$DEV_ORACLE_URL"` 或 `psql "$DEV_PG_URL"`。
+
+### 通过 SSH 使用 Git
+
+镜像包含 `openssh-client` 和 `git-lfs`。把 `DSH_SSH_DIR` 指向宿主机上包含私钥、`config` 和 `known_hosts` 的目录；entrypoint 会把它复制到 `/root/.ssh` 并设为 600 权限（直接从 Windows 挂载的密钥显示为 0777，ssh 会拒绝）。agent 能使用这把密钥，因此建议使用单独的 deploy key，而不是个人密钥。`known_hosts` 必须已包含 Git 主机，因为沙箱中的命令无法写入它。
+
+### 其他命令行工具
+
+`xmllint`（读取和校验 `pom.xml`）、`yq`（YAML/XML/properties，例如 `application.yml`）、`tree`。
+
+### 通过 Nexus 使用 npm 和 pip
+
+容器无法访问 npm 和 PyPI。如果公司有 Nexus，在 `docker/compose.env` 中加入：
+
+```sh
+NPM_CONFIG_REGISTRY=https://nexus.company.local/repository/npm-group/
+PIP_INDEX_URL=https://nexus.company.local/repository/pypi-group/simple
+```
+
 ### 选择 workspace（目录选择器）
 
 Docker 绑定 `0.0.0.0`，因此 Host 使用 **browse**（浏览容器内目录），不会打开 Windows 的文件夹对话框。这是预期设计——原生操作系统选择器不会在容器内运行。
@@ -130,12 +190,12 @@ Docker 绑定 `0.0.0.0`，因此 Host 使用 **browse**（浏览容器内目录�
 ```sh
 docker build \
   --build-arg DSH_CLIENT_COMMIT_HASH="$(git rev-parse HEAD)" \
-  -t nguyentrungthaoit/dsh:0.2.1-alpha.9 \
+  -t nguyentrungthaoit/dsh:0.2.1-alpha.10 \
   -t nguyentrungthaoit/dsh:latest \
   .
 
 docker login
-docker push nguyentrungthaoit/dsh:0.2.1-alpha.9
+docker push nguyentrungthaoit/dsh:0.2.1-alpha.10
 docker push nguyentrungthaoit/dsh:latest
 ```
 

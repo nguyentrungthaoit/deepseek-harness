@@ -12,7 +12,7 @@ name: dsh
 
 services:
   dsh:
-    image: nguyentrungthaoit/dsh:${DSH_IMAGE_TAG:-0.2.1-alpha.9}
+    image: nguyentrungthaoit/dsh:${DSH_IMAGE_TAG:-0.2.1-alpha.10}
     build:
       context: .
       dockerfile: Dockerfile
@@ -41,6 +41,16 @@ services:
       - type: bind
         source: ${DSH_WORKSPACE:-D:/Workspaces}
         target: /workspace
+      # Maven local repository. Set DSH_MAVEN_REPO to the host's repository
+      # folder (the one holding com/, org/, ...; e.g. C:/Users/<you>/.m2/repository
+      # or a custom <localRepository>) to reuse its cached dependencies; unset,
+      # a named volume keeps the container's own cache.
+      - ${DSH_MAVEN_REPO:-dsh-m2}:/m2/repository
+      # Optional SSH keys for git over SSH: set DSH_SSH_DIR to a host folder with
+      # the key(s), config and known_hosts. The entrypoint copies it to /root/.ssh.
+      - ${DSH_SSH_DIR:-dsh-ssh}:/run/dsh-ssh:ro
+    # Chromium needs more shared memory than Docker's 64 MB default.
+    shm_size: 1gb
     extra_hosts:
       - "host.docker.internal:host-gateway"
     command:
@@ -52,3 +62,7 @@ services:
 volumes:
   dsh-home:
     name: dsh-home
+  dsh-m2:
+    name: dsh-m2
+  dsh-ssh:
+    name: dsh-ssh

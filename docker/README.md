@@ -66,24 +66,24 @@ File: [`docker-compose.yml`](../docker-compose.yml), mẫu env: [`compose.env.ex
 ## Dùng tại công ty (chỉ Docker)
 
 ```sh
-docker pull nguyentrungthaoit/dsh:0.2.1-alpha.9
+docker pull nguyentrungthaoit/dsh:0.2.1-alpha.10
 ```
 
 ### Web UI
 
 ```sh
-docker run --rm -p 3080:3080 \
+docker run --rm -p 3080:3080 --shm-size=1g \
   -e DEEPSEEK_API_KEY=sk-... \
   -v dsh-home:/data/dsh \
   -v /path/to/project:/workspace \
   -w /workspace \
-  nguyentrungthaoit/dsh:0.2.1-alpha.9
+  nguyentrungthaoit/dsh:0.2.1-alpha.10
 ```
 
 Mở `http://127.0.0.1:3080`. Nếu truy cập qua hostname công ty:
 
 ```sh
-... nguyentrungthaoit/dsh:0.2.1-alpha.9 web --no-open --port 3080 --trusted-host app.company.local:3080
+... nguyentrungthaoit/dsh:0.2.1-alpha.10 web --no-open --port 3080 --trusted-host app.company.local:3080
 ```
 
 ### Headless (một task)
@@ -93,7 +93,7 @@ docker run --rm \
   -e DEEPSEEK_API_KEY=sk-... \
   -v /path/to/project:/workspace \
   -w /workspace \
-  nguyentrungthaoit/dsh:0.2.1-alpha.9 \
+  nguyentrungthaoit/dsh:0.2.1-alpha.10 \
   --profile headless "summarize this repository"
 ```
 
@@ -115,6 +115,66 @@ http://host.docker.internal:11434/v1
 
 (Docker Desktop Windows/Mac. Không dùng `http://127.0.0.1:11434/v1`.)
 
+### Java và Maven
+
+Image có sẵn JDK 21 và JDK 8 (Temurin) cùng Maven 3.9. Container không ra được registry, nên Maven đọc dependency từ local repository `/m2/repository`, mặc định chạy offline (`-o`).
+
+Dùng lại dependency đã tải trên máy host: trỏ `DSH_MAVEN_REPO` tới thư mục repository của host (thư mục chứa `com/`, `org/`...; mặc định là `.m2/repository`, hoặc đường dẫn `<localRepository>` trong `settings.xml` nếu đã đổi) trong `docker/compose.env`, rồi recreate container:
+
+```sh
+DSH_MAVEN_REPO=C:/Users/<you>/.m2/repository
+```
+
+Thư mục đó phải đã có dependency, tức là project đã từng build bằng Maven trên host (`mvn -DskipTests package` hoặc `mvn dependency:go-offline`). Khi project thêm thư viện mới, build lại một lần trên host để tải về, container sẽ thấy ngay. `settings.xml` của host không được dùng; image đã cấu hình sẵn local repository. Lỗi `Cannot access ... in offline mode` nghĩa là artifact (thường là plugin) chưa có trong repository của host.
+
+Command agent chạy trong sandbox chỉ đọc được `/m2`; build và test offline vẫn chạy, còn `mvn install` (ghi vào `/m2`) cần cho phép chạy ngoài sandbox. Không đặt `DSH_MAVEN_REPO` thì `/m2/repository` là volume `dsh-m2` riêng của container. Nếu container ra được Maven repo (qua proxy hoặc Nexus), thêm dòng `MAVEN_ARGS=` (để trống) vào `docker/compose.env` để Maven tải online.
+
+JDK 21 là mặc định (`JAVA_HOME`, `java`, `mvn`). Project Java 8 dùng JDK 8 theo một trong hai cách:
+
+- Chạy Maven bằng JDK 8 cho từng lệnh: `JAVA_HOME=$JAVA_HOME_8 mvn -DskipTests package`. Cần cách này khi project dùng plugin cũ không chạy được trên Java 21.
+- Giữ Maven trên JDK 21 và để `maven-toolchains-plugin` chọn JDK 8 khi compile và test: image đã khai báo cả hai JDK trong `/opt/maven/conf/toolchains.xml` (version `1.8` và `21`, vendor `temurin`).
+
+Biến `JAVA_HOME_8` và `JAVA_HOME_21` trỏ tới `/opt/java/jdk8` và `/opt/java/jdk21`. Image không có JDK 25.
+
+### Trình duyệt (Playwright)
+
+Image có Chromium cài sẵn lúc build, dùng được theo hai cách:
+
+- **Browser tools của agent**: vào **Plugins** trên sidebar Web và bật **Browser tools** (bundle [`browser-use-bundle`](../packages/experimental/browser-use-bundle/README.md)); chỉ cần bật một lần, trạng thái lưu trong volume `dsh-home`. Session mới hoặc được mở lại sẽ có các tool Playwright MCP, mỗi Session một Chromium headless riêng, không lưu profile. Đây là gói experimental nên không có sẵn trong preset mặc định. Trong image, bundle dùng launcher `DSH_BROWSER_CHROMIUM`.
+- **Script**: Playwright cho Python có trong venv mặc định, nên agent chạy được `python3 script.py` với `from playwright.sync_api import sync_playwright`.
+
+Container chạy bằng root nên Chromium phải chạy với `--no-sandbox`. Browser tools đã đi qua launcher `/usr/local/bin/dsh-chromium`; script Python cũng chạy được vì Playwright mặc định đã tắt sandbox. Compose đặt `shm_size: 1gb` vì mức 64 MB mặc định của Docker làm Chromium crash; nếu dùng `docker run` thì thêm `--shm-size=1g`. Trang nào mở được tuỳ vào mạng của container: muốn agent vào app nội bộ thì host đó phải đi qua được proxy (Squid allowlist). Muốn tắt browser tools: tắt bundle trong Plugins.
+
+### Điều hướng code Java (LSP)
+
+Các preset Web `standard`, `cordis`, `ptc` bật tool `lsp` khi có biến `DSH_JDTLS` (image đã đặt sẵn, trỏ tới launcher `/usr/local/bin/dsh-jdtls` của Eclipse JDT Language Server). Agent dùng tool này để tìm định nghĩa, mọi chỗ tham chiếu, các implementation và xem hover cho file `.java`, chính xác hơn grep.
+
+jdtls đọc Maven theo cấu hình offline của image, cùng `/m2/repository`. Lần query đầu tiên trên một project, jdtls phải import project nên có thể mất vài phút (timeout của tool là 5 phút); các lần sau nhanh. Index nằm trong `/var/cache/dsh-jdtls` của container, không ghi vào workspace, và mất khi recreate container. jdtls chạy trên JDK 21; project khai báo Java 8 (`maven.compiler.source` 1.8) được build với runtime `JavaSE-1.8` trỏ tới JDK 8. jdtls chạy kèm Lombok 1.18.48 (javaagent), nên project dùng Lombok không bị báo lỗi giả ở constructor, getter hay builder sinh ra. Heap giới hạn 2 GB cho mỗi project đang mở. Muốn tắt: đặt `DSH_JDTLS=` (để trống) trong `docker/compose.env`.
+
+### Database (Oracle, PostgreSQL)
+
+- PostgreSQL: `psql` (bản client của Debian 12).
+- Oracle: SQLcl, lệnh `sql`, chạy trên JDK 21 có sẵn. Ví dụ: `sql -S user/password@//db-host:1521/SERVICE`.
+
+Container phải ra được host và port của DB. Nên dùng tài khoản DB dev chỉ đọc. dsh lọc mọi biến môi trường có tên chứa `KEY`, `PASSWORD`, `SECRET` hoặc `TOKEN` khỏi command của agent, nên `DB_PASSWORD` sẽ không tới được `sql`/`psql`; muốn agent tự kết nối thì đặt chuỗi kết nối vào biến tên khác trong `docker/compose.env`, ví dụ `DEV_ORACLE_URL=user/pass@//db-host:1521/SERVICE` hoặc `DEV_PG_URL=postgresql://user:pass@db-host:5432/app`, rồi chạy `sql -S "$DEV_ORACLE_URL"` hay `psql "$DEV_PG_URL"`.
+
+### Git qua SSH
+
+Image có `openssh-client` và `git-lfs`. Đặt `DSH_SSH_DIR` trỏ tới một thư mục trên host chứa private key, `config` và `known_hosts`; entrypoint copy nó vào `/root/.ssh` với quyền 600 (ssh từ chối key mount thẳng từ Windows vì hiện là 0777). Agent dùng được key này, nên nên dùng deploy key riêng thay vì key cá nhân. `known_hosts` phải có sẵn host Git, vì command trong sandbox không ghi thêm được.
+
+### Tool dòng lệnh khác
+
+`xmllint` (đọc và kiểm tra `pom.xml`), `yq` (YAML/XML/properties, ví dụ `application.yml`), `tree`.
+
+### npm và pip qua Nexus
+
+Container không ra được npm và PyPI. Nếu công ty có Nexus, thêm vào `docker/compose.env`:
+
+```sh
+NPM_CONFIG_REGISTRY=https://nexus.company.local/repository/npm-group/
+PIP_INDEX_URL=https://nexus.company.local/repository/pypi-group/simple
+```
+
 ### Chọn workspace (directory picker)
 
 Docker bind `0.0.0.0` nên Host dùng **browse** (duyệt thư mục trong container), không mở hộp thoại thư mục của Windows. Đó là đúng thiết kế — native OS picker không chạy trong container.
@@ -130,12 +190,12 @@ Làm một lần ngoài máy công ty (hoặc CI), rồi đồng nghiệp chỉ 
 ```sh
 docker build \
   --build-arg DSH_CLIENT_COMMIT_HASH="$(git rev-parse HEAD)" \
-  -t nguyentrungthaoit/dsh:0.2.1-alpha.9 \
+  -t nguyentrungthaoit/dsh:0.2.1-alpha.10 \
   -t nguyentrungthaoit/dsh:latest \
   .
 
 docker login
-docker push nguyentrungthaoit/dsh:0.2.1-alpha.9
+docker push nguyentrungthaoit/dsh:0.2.1-alpha.10
 docker push nguyentrungthaoit/dsh:latest
 ```
 
