@@ -1,5 +1,6 @@
 /** Chromium browser tools from the pinned Playwright MCP server. @module */
 
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
@@ -31,7 +32,9 @@ export function apply(ctx: Context, config: Config): void {
   const env = Object.fromEntries(Object.keys(process.env)
     .filter(key => key.toUpperCase().startsWith('PLAYWRIGHT_MCP_'))
     .map(key => [key, '']))
-  const args = [cli, '--browser', 'chromium']
+  // Snapshots and screenshots otherwise land in `.playwright-mcp/` inside the
+  // Session's workspace, where they show up as untracked project files.
+  const args = [cli, '--browser', 'chromium', '--output-dir', join(tmpdir(), 'dsh-playwright-mcp')]
   if (config.mode === 'attach') {
     args.push('--cdp-endpoint', config.endpoint)
   } else {

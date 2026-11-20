@@ -66,7 +66,7 @@ File: [`docker-compose.yml`](../docker-compose.yml), mẫu env: [`compose.env.ex
 ## Dùng tại công ty (chỉ Docker)
 
 ```sh
-docker pull nguyentrungthaoit/dsh:0.2.1-alpha.10
+docker pull nguyentrungthaoit/dsh:0.2.1-alpha.11
 ```
 
 ### Web UI
@@ -77,13 +77,13 @@ docker run --rm -p 3080:3080 --shm-size=1g \
   -v dsh-home:/data/dsh \
   -v /path/to/project:/workspace \
   -w /workspace \
-  nguyentrungthaoit/dsh:0.2.1-alpha.10
+  nguyentrungthaoit/dsh:0.2.1-alpha.11
 ```
 
 Mở `http://127.0.0.1:3080`. Nếu truy cập qua hostname công ty:
 
 ```sh
-... nguyentrungthaoit/dsh:0.2.1-alpha.10 web --no-open --port 3080 --trusted-host app.company.local:3080
+... nguyentrungthaoit/dsh:0.2.1-alpha.11 web --no-open --port 3080 --trusted-host app.company.local:3080
 ```
 
 ### Headless (một task)
@@ -93,7 +93,7 @@ docker run --rm \
   -e DEEPSEEK_API_KEY=sk-... \
   -v /path/to/project:/workspace \
   -w /workspace \
-  nguyentrungthaoit/dsh:0.2.1-alpha.10 \
+  nguyentrungthaoit/dsh:0.2.1-alpha.11 \
   --profile headless "summarize this repository"
 ```
 
@@ -190,12 +190,12 @@ Làm một lần ngoài máy công ty (hoặc CI), rồi đồng nghiệp chỉ 
 ```sh
 docker build \
   --build-arg DSH_CLIENT_COMMIT_HASH="$(git rev-parse HEAD)" \
-  -t nguyentrungthaoit/dsh:0.2.1-alpha.10 \
+  -t nguyentrungthaoit/dsh:0.2.1-alpha.11 \
   -t nguyentrungthaoit/dsh:latest \
   .
 
 docker login
-docker push nguyentrungthaoit/dsh:0.2.1-alpha.10
+docker push nguyentrungthaoit/dsh:0.2.1-alpha.11
 docker push nguyentrungthaoit/dsh:latest
 ```
 

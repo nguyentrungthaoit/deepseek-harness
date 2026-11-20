@@ -52,40 +52,45 @@
           # Java code navigation when the image ships jdtls (Docker sets DSH_JDTLS to a
           # launcher that keeps its index out of the workspace). Maven settings match
           # the image's offline /m2/repository.
-          - id: lsp
-            name: '@deepseek-ai/dsh-lsp'
+          - id: code-navigation
+            name: cordis:group
+            group: true
             disabled: !!js "!process.env.DSH_JDTLS"
-          - id: lsp-stdio
-            name: '@deepseek-ai/dsh-lsp-stdio'
-            disabled: !!js "!process.env.DSH_JDTLS"
+            # Preset services must stay inside an isolate realm.
+            isolate:
+              lsp: true
             config:
-              servers:
-                java:
-                  command: !!js "process.env.DSH_JDTLS || 'jdtls'"
-                  extensionToLanguage:
-                    '.java': java
-                  initializationOptions:
-                    settings:
-                      java:
-                        configuration:
-                          maven:
-                            globalSettings: /opt/maven/conf/settings.xml
-                          runtimes:
-                            - name: JavaSE-21
-                              path: /opt/java/jdk21
-                              default: true
-                            - name: JavaSE-1.8
-                              path: /opt/java/jdk8
-                        import:
-                          maven:
-                            offline:
-                              enabled: true
-          - id: tool-lsp
-            name: '@deepseek-ai/dsh-tool-lsp'
-            disabled: !!js "!process.env.DSH_JDTLS"
-            config:
-              # The first query on a Maven project waits for jdtls to import it.
-              timeoutMs: 300000
+              - id: lsp
+                name: '@deepseek-ai/dsh-lsp'
+              - id: lsp-stdio
+                name: '@deepseek-ai/dsh-lsp-stdio'
+                config:
+                  servers:
+                    java:
+                      command: !!js "process.env.DSH_JDTLS || 'jdtls'"
+                      extensionToLanguage:
+                        '.java': java
+                      initializationOptions:
+                        settings:
+                          java:
+                            configuration:
+                              maven:
+                                globalSettings: /opt/maven/conf/settings.xml
+                              runtimes:
+                                - name: JavaSE-21
+                                  path: /opt/java/jdk21
+                                  default: true
+                                - name: JavaSE-1.8
+                                  path: /opt/java/jdk8
+                            import:
+                              maven:
+                                offline:
+                                  enabled: true
+              - id: tool-lsp
+                name: '@deepseek-ai/dsh-tool-lsp'
+                config:
+                  # The first query on a Maven project waits for jdtls to import it.
+                  timeoutMs: 300000
           - id: command-goal
             name: '@deepseek-ai/dsh-command-goal'
           - id: tool-goal

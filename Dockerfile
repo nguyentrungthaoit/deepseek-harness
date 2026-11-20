@@ -204,6 +204,7 @@ export JAVA_HOME=/opt/java/jdk21
 exec /opt/dsh-py/bin/python3 /opt/jdtls/bin/jdtls \
   --jvm-arg=-Duser.home="$base/home" \
   --jvm-arg=-Xmx2G \
+  --jvm-arg=-Djava.import.generatesMetadataFilesAtProjectRoot=false \
   --jvm-arg=-javaagent:/opt/jdtls/lombok.jar \
   --jvm-arg=-Daether.enhancedLocalRepository.trackingFilename=.dsh-no-tracking \
   -configuration "$base/config" \
